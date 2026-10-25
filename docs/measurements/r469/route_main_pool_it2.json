@@ -1,0 +1,279 @@
+{
+ "set": "pool",
+ "repo": "C:\\Users\\andre\\AppData\\Local\\Temp\\claude\\D--Claude-Projects-regenold-eu-ai-act-rag\\1d836361-5872-420f-b1fb-a737fc8719c3\\scratchpad\\main_wt",
+ "rows": [
+  {
+   "id": "P001",
+   "family": null,
+   "kind": "pool",
+   "question": "Are we a provider or deployer if we significantly configure a third party medical model under Article 25?",
+   "label": null,
+   "answer": "Article 25(2) requires the initial provider and the new provider to cooperate along the value chain: the initial provider must make available the necessary information and provide the reasonably expected technical access and other assistance so that the new provider can meet its obligations, in particular the conformity assessment of high-risk AI systems. Article 25(4) is a separate duty: the high-risk provider and third-party suppliers of AI systems, tools, services, components or processes used in or integrated into a high-risk AI system must specify, by written agreement, the necessary information, capabilities, technical access and other assistance, except for third parties making tools, services, processes or components (other than general-purpose AI models) accessible to the public under a free and open-source licence. For general-purpose AI models, the one-third fine-tune rule (per the Commission's 18 July 2025 GPAI Guidelines, anchored on Article 51) makes the downstream modifier a new provider when additional training compute exceeds 1/3 of the base model's compute, or 1/3 of the 10^25 FLOPs systemic threshold (~3.3×10^24 FLOPs) when base compute is unknown.",
+   "references": [
+    "Article 25.4"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P002",
+   "family": null,
+   "kind": "pool",
+   "question": "Are we a provider or just a deployer if the customer configures the model?",
+   "label": null,
+   "answer": "This system is classified as limited-risk under the Article 50 transparency obligations. The provider must provide AI literacy training to all staff involved in development, deployment and operation of the system, and document a classification assessment confirming the system is not high-risk under Article 6 (Article 4 requires providers and deployers to take measures to ensure a sufficient level of AI literacy among their staff and other persons dealing with AI systems on their behalf, considering technical knowledge, experience, education, training, and context of use.). A clear notice must be displayed to users at the first interaction informing them they are interacting with an AI system, and AI-generated content must be clearly labelled as such (Under Article 50, Transparency obligations split by actor: providers must ensure AI systems interacting.). Article 9 requires a documented, iterative risk-management system across the AI system's lifecycle.",
+   "references": [
+    "Article 50",
+    "Article 4",
+    "Article 9.5",
+    "Article 26",
+    "Article 10"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P003",
+   "family": null,
+   "kind": "pool",
+   "question": "Are we a provider or just a deployer?",
+   "label": null,
+   "answer": "This system is classified as limited-risk under the Article 50 transparency obligations. The provider must provide AI literacy training to all staff involved in development, deployment and operation of the system, and document a classification assessment confirming the system is not high-risk under Article 6 (Article 4 requires providers and deployers to take measures to ensure a sufficient level of AI literacy among their staff and other persons dealing with AI systems on their behalf, considering technical knowledge, experience, education, training, and context of use.). A clear notice must be displayed to users at the first interaction informing them they are interacting with an AI system, and AI-generated content must be clearly labelled as such (Under Article 50, Transparency obligations split by actor: providers must ensure AI systems interacting.). Article 9 requires a documented, iterative risk-management system across the AI system's lifecycle.",
+   "references": [
+    "Article 50",
+    "Article 4",
+    "Article 9.5",
+    "Article 26",
+    "Article 10"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P004",
+   "family": null,
+   "kind": "pool",
+   "question": "Can an employer use AI to infer employees' emotions at work from their facial expressions?",
+   "label": null,
+   "answer": "Emotion recognition in the workplace and education contexts is prohibited under Article 5(1)(f), with narrow medical and safety carve-outs. Whether it is high-risk turns on Article 6: it is high-risk only if it is a safety component of a product regulated under Annex I (for example a medical device under the MDR or IVDR) or falls within one of the Annex III use cases. Otherwise it is limited- or minimal-risk, subject mainly to the Article 50 transparency duties where it interacts directly with people.",
+   "references": [
+    "Article 6",
+    "Article 50",
+    "Annex III.1.c",
+    "Annex I"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P005",
+   "family": null,
+   "kind": "pool",
+   "question": "Can an employer use emotion recognition on staff?",
+   "label": null,
+   "answer": "Emotion recognition in the workplace or in an education institution is prohibited under Article 5(1)(f), which bans placing on the market, putting into service or using AI systems to infer the emotions of a natural person in those settings. Article 5(1)(f) excepts only a system intended for medical or safety reasons, such as one intended for therapeutic use.",
+   "references": [
+    "Article 5.1.f",
+    "Article 50.3",
+    "Annex III.1.c"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P006",
+   "family": null,
+   "kind": "pool",
+   "question": "Can we track our employees emotional state with AI cameras?",
+   "label": null,
+   "answer": "Real-time remote biometric identification by law enforcement is prohibited under Article 5 save for narrow, exhaustively-listed law-enforcement exceptions that each require prior judicial or administrative authorisation; under Article 5(5) Member States may enable those exceptions in national law and may set stricter national rules. Article 5(1)(c) carve-out: the social-scoring prohibition does not affect lawful evaluation practices of natural persons that are carried out for a specific purpose in accordance with Union and national law (Recital 31 final sentence). Under Article 27, in addition to Article 26 baseline duties, deployers of certain Annex III high-risk AI systems must perform a Fundamental Rights Impact Assessment (FRIA) covering affected persons and specific fundamental rights risks.",
+   "references": [
+    "Article 27",
+    "Article 49"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P007",
+   "family": null,
+   "kind": "pool",
+   "question": "Can we use AI to detect the emotional state of our call-centre staff?",
+   "label": null,
+   "answer": "Emotion recognition in the workplace and education contexts is prohibited under Article 5(1)(f), with narrow medical and safety carve-outs. Whether it is high-risk turns on Article 6: it is high-risk only if it is a safety component of a product regulated under Annex I (for example a medical device under the MDR or IVDR) or falls within one of the Annex III use cases. Otherwise it is limited- or minimal-risk, subject mainly to the Article 50 transparency duties where it interacts directly with people.",
+   "references": [
+    "Article 6.3",
+    "Article 50",
+    "Annex III.7",
+    "Annex I"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P008",
+   "family": null,
+   "kind": "pool",
+   "question": "Can we use an AI system that infers the emotions of our employees during performance reviews?",
+   "label": null,
+   "answer": "Emotion recognition in the workplace and education contexts is prohibited under Article 5(1)(f), with narrow medical and safety carve-outs. Whether it is high-risk turns on Article 6: it is high-risk only if it is a safety component of a product regulated under Annex I (for example a medical device under the MDR or IVDR) or falls within one of the Annex III use cases. Otherwise it is limited- or minimal-risk, subject mainly to the Article 50 transparency duties where it interacts directly with people.",
+   "references": [
+    "Article 6.3",
+    "Article 50.4",
+    "Annex III.1.c",
+    "Annex I"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P009",
+   "family": null,
+   "kind": "pool",
+   "question": "Can we use emotion recognition on our employees in the office?",
+   "label": null,
+   "answer": "Emotion recognition in the workplace or in an education institution is prohibited under Article 5(1)(f), which bans placing on the market, putting into service or using AI systems to infer the emotions of a natural person in those settings. Article 5(1)(f) excepts only a system intended for medical or safety reasons, such as one intended for therapeutic use.",
+   "references": [
+    "Article 5.1.f",
+    "Article 50.3",
+    "Annex III.1.c"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P010",
+   "family": null,
+   "kind": "pool",
+   "question": "Is emotion-recognition in workplaces prohibited?",
+   "label": null,
+   "answer": "Classification turns on Article 6: the system is high-risk if it is a safety component of a product regulated under Annex I (for example a medical device under the MDR or IVDR) or if its intended use falls within one of the Annex III use cases. If neither applies, and the system is not one of the practices exhaustively prohibited by Article 5, it is limited- or minimal-risk, subject mainly to the Article 50 transparency duties where it interacts directly with people.",
+   "references": [
+    "Article 5.1.f",
+    "Article 6",
+    "Article 50.3",
+    "Annex III.1.c"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P011",
+   "family": null,
+   "kind": "pool",
+   "question": "Is the Commission empowered to update the high-risk list?",
+   "label": null,
+   "answer": "I cannot answer your question from my Knowledge Graph, which address only obligations under Regulation (EU) 2024/1689 (the AI Act), such as AI literacy duties for providers and deployers (Article 4), coordination of notified bodies (Article 38), and access to the Scientific Panel's expert pool (Article 69). If you have a question about AI Act compliance, I am glad to help.",
+   "references": [],
+   "status": 200
+  },
+  {
+   "id": "P012",
+   "family": null,
+   "kind": "pool",
+   "question": "We are a provider of emotion-recognition software sold to employers - is it allowed?",
+   "label": null,
+   "answer": "Under Article 5.1.f, emotion recognition in the workplace and in education institutions is prohibited, which reaches monitoring the emotions of employees in a call-centre; the only exception is where the use of the system is intended to be put in place or placed on the market for medical or safety reasons. Transparency obligations split by actor: providers must ensure AI systems interacting with natural persons disclose their AI nature (Article 50(1)) and must mark synthetic AI-generated content in a machine-readable, detectable format (Article 50(2)); deployers must inform exposed persons when operating emotion-recognition or biometric-categorisation systems (Article 50(3)) and must disclose that deep fake content has been artificially generated or manipulated (Article 50(4)). For a deep fake forming part of an evidently artistic, creative, satirical, fictional or analogous work, transparency is limited to disclosing the existence of such content in an appropriate manner that does not hamper the display or enjoyment of the work (Article 50(4), first subparagraph).",
+   "references": [
+    "Article 5.1.f",
+    "Article 6",
+    "Article 50.3",
+    "Annex III.1.c"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P013",
+   "family": null,
+   "kind": "pool",
+   "question": "We built an internal AI for our own HR use - never released externally. Are we a provider or just a deployer?",
+   "label": null,
+   "answer": "This system is classified as limited-risk under the Article 50 transparency obligations. The provider must provide AI literacy training to all staff involved in development, deployment and operation of the system, and document a classification assessment confirming the system is not high-risk under Article 6 (Article 4 requires providers and deployers to take measures to ensure a sufficient level of AI literacy among their staff and other persons dealing with AI systems on their behalf, considering technical knowledge, experience, education, training, and context of use.). A clear notice must be displayed to users at the first interaction informing them they are interacting with an AI system, and AI-generated content must be clearly labelled as such (Under Article 50, Transparency obligations split by actor: providers must ensure AI systems interacting.). Article 9 requires a documented, iterative risk-management system across the AI system's lifecycle.",
+   "references": [
+    "Article 50",
+    "Article 4",
+    "Article 9.5",
+    "Article 26.5",
+    "Article 10"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P014",
+   "family": null,
+   "kind": "pool",
+   "question": "We built an internal AI for our own HR use — never released externally. Are we a provider or just a deployer?",
+   "label": null,
+   "answer": "This system is classified as limited-risk under the Article 50 transparency obligations. The provider must provide AI literacy training to all staff involved in development, deployment and operation of the system, and document a classification assessment confirming the system is not high-risk under Article 6 (Article 4 requires providers and deployers to take measures to ensure a sufficient level of AI literacy among their staff and other persons dealing with AI systems on their behalf, considering technical knowledge, experience, education, training, and context of use.). A clear notice must be displayed to users at the first interaction informing them they are interacting with an AI system, and AI-generated content must be clearly labelled as such (Under Article 50, Transparency obligations split by actor: providers must ensure AI systems interacting.). Article 9 requires a documented, iterative risk-management system across the AI system's lifecycle.",
+   "references": [
+    "Article 50",
+    "Article 4",
+    "Article 9.5",
+    "Article 26.5",
+    "Article 10"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P015",
+   "family": null,
+   "kind": "pool",
+   "question": "We built an internal AI for our own HR use, provider or deployer?",
+   "label": null,
+   "answer": "This system is classified as limited-risk under the Article 50 transparency obligations. The provider must provide AI literacy training to all staff involved in development, deployment and operation of the system, and document a classification assessment confirming the system is not high-risk under Article 6 (Article 4 requires providers and deployers to take measures to ensure a sufficient level of AI literacy among their staff and other persons dealing with AI systems on their behalf, considering technical knowledge, experience, education, training, and context of use.). A clear notice must be displayed to users at the first interaction informing them they are interacting with an AI system, and AI-generated content must be clearly labelled as such (Under Article 50, Transparency obligations split by actor: providers must ensure AI systems interacting.). Article 9 requires a documented, iterative risk-management system across the AI system's lifecycle.",
+   "references": [
+    "Article 50",
+    "Article 4",
+    "Article 9.5",
+    "Article 26.5",
+    "Article 10"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P016",
+   "family": null,
+   "kind": "pool",
+   "question": "What must Article 13 instructions for use contain?",
+   "label": null,
+   "answer": "Where the high-risk system is an Annex-III biometric-identification, emotion-recognition, or biometric-categorisation system, Article 26(11) preserves the Article 50 transparency-to-end-user obligations on top of the Article 13 transparency-to-deployer chain. Deployer obligations: use the system per the instructions, assign human oversight to competent + trained natural persons, monitor operation, and under Article 26(6) retain the logs automatically generated by the high-risk AI system (to the extent under deployer control) for at least six months.",
+   "references": [
+    "Article 13.3"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P017",
+   "family": null,
+   "kind": "pool",
+   "question": "What must a provider include in the instructions for use?",
+   "label": null,
+   "answer": "Where the high-risk system is an Annex-III biometric-identification, emotion-recognition, or biometric-categorisation system, Article 26(11) preserves the Article 50 transparency-to-end-user obligations on top of the Article 13 transparency-to-deployer chain. Article 15 requires appropriate levels of accuracy, robustness. Under Article 24, Before making a high-risk AI system available on the market. Under Article 23, Before placing a high-risk AI system on the market.",
+   "references": [
+    "Article 13",
+    "Article 15",
+    "Article 24.1",
+    "Article 23",
+    "Article 26.1",
+    "Article 50"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P018",
+   "family": null,
+   "kind": "pool",
+   "question": "What must a provider of a high-risk AI system supply in the instructions for use?",
+   "label": null,
+   "answer": "Requires high-risk AI systems to be designed for sufficient operational transparency to deployers, accompanied by instructions for use covering provider identity, intended purpose, capabilities + limitations, expected lifetime.",
+   "references": [
+    "Article 6.2",
+    "Article 13"
+   ],
+   "status": 200
+  },
+  {
+   "id": "P019",
+   "family": null,
+   "kind": "pool",
+   "question": "What must the instructions for use contain?",
+   "label": null,
+   "answer": "Where the high-risk system is an Annex-III biometric-identification, emotion-recognition, or biometric-categorisation system, Article 26(11) preserves the Article 50 transparency-to-end-user obligations on top of the Article 13 transparency-to-deployer chain. Article 15 requires appropriate levels of accuracy, robustness.",
+   "references": [
+    "Article 13.3",
+    "Article 15.3"
+   ],
+   "status": 200
+  }
+ ]
+}

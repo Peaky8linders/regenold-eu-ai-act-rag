@@ -1,0 +1,102 @@
+{
+ "pool": 1584,
+ "questions": [
+  "Are we a provider or deployer if we significantly configure a third party medical model under Article 25?",
+  "Are we a provider or just a deployer if the customer configures the model?",
+  "Are we a provider or just a deployer?",
+  "Can an employer use AI to infer employees' emotions at work from their facial expressions?",
+  "Can an employer use emotion recognition on staff?",
+  "Can we track our employees emotional state with AI cameras?",
+  "Can we use AI to detect the emotional state of our call-centre staff?",
+  "Can we use an AI system that infers the emotions of our employees during performance reviews?",
+  "Can we use emotion recognition on our employees in the office?",
+  "Is emotion-recognition in workplaces prohibited?",
+  "Is the Commission empowered to update the high-risk list?",
+  "We are a provider of emotion-recognition software sold to employers - is it allowed?",
+  "We built an internal AI for our own HR use - never released externally. Are we a provider or just a deployer?",
+  "We built an internal AI for our own HR use — never released externally. Are we a provider or just a deployer?",
+  "We built an internal AI for our own HR use, provider or deployer?",
+  "What must Article 13 instructions for use contain?",
+  "What must a provider include in the instructions for use?",
+  "What must a provider of a high-risk AI system supply in the instructions for use?",
+  "What must the instructions for use contain?"
+ ],
+ "moves": {
+  "Are we a provider or deployer if we significantly configure a third party medical model under Article 25?": [
+   null,
+   "_detect_role_difference_inquiry"
+  ],
+  "Are we a provider or just a deployer if the customer configures the model?": [
+   null,
+   "_detect_role_difference_inquiry"
+  ],
+  "Are we a provider or just a deployer?": [
+   null,
+   "_detect_role_difference_inquiry"
+  ],
+  "Can an employer use AI to infer employees' emotions at work from their facial expressions?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Can an employer use emotion recognition on staff?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Can we track our employees emotional state with AI cameras?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Can we use AI to detect the emotional state of our call-centre staff?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Can we use an AI system that infers the emotions of our employees during performance reviews?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Can we use emotion recognition on our employees in the office?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Is emotion-recognition in workplaces prohibited?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Is the Commission empowered to update the high-risk list?": [
+   null,
+   "annex_iii_amendment"
+  ],
+  "We are a provider of emotion-recognition software sold to employers - is it allowed?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "We built an internal AI for our own HR use - never released externally. Are we a provider or just a deployer?": [
+   null,
+   "_detect_role_difference_inquiry"
+  ],
+  "We built an internal AI for our own HR use — never released externally. Are we a provider or just a deployer?": [
+   null,
+   "_detect_role_difference_inquiry"
+  ],
+  "We built an internal AI for our own HR use, provider or deployer?": [
+   null,
+   "_detect_role_difference_inquiry"
+  ],
+  "What must Article 13 instructions for use contain?": [
+   null,
+   "instructions_for_use_categories"
+  ],
+  "What must a provider include in the instructions for use?": [
+   null,
+   "instructions_for_use_categories"
+  ],
+  "What must a provider of a high-risk AI system supply in the instructions for use?": [
+   null,
+   "instructions_for_use_categories"
+  ],
+  "What must the instructions for use contain?": [
+   null,
+   "instructions_for_use_categories"
+  ]
+ }
+}

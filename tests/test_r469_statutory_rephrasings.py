@@ -32,8 +32,10 @@ blind and is not used here.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
+from pathlib import Path
 
 import pytest
 
@@ -289,6 +291,123 @@ def test_a_non_definitional_contrast_is_not_the_role_verdict(question):
 )
 def test_a_robot_question_that_asks_no_risk_verdict_is_not_the_verdict(question):
     assert not impl._detect_robotic_surgery_inquiry(question)
+
+
+# ── 5. Iteration 2: held-out set 1, development data now ────────────────────
+#
+# Iteration 1 moved 2 of held-out set 1's 28 targets. The set was then read to
+# design the iteration-2 cues, so its rows are development data here; held-out
+# set 2 (written blind, committed before these tests) measures iteration 2.
+
+HELDOUT_1 = json.loads(
+    (Path(__file__).resolve().parents[1] / "docs" / "measurements" / "r469"
+     / "heldout_rephrasings.json").read_text(encoding="utf-8")
+)["rows"]
+#: The statutory verdict each family's targets should reach.
+STATUTORY_FAMILY = {
+    "Q74": "deepfake_artistic_disclosure",
+    "Q16": "workplace_emotion_and_stress",
+    "Q45": "instructions_for_use_categories",
+    "Q96": "annex_iii_areas_healthcare",
+    "Q17": "annex_iii_amendment",
+    "Q95": "annex_iii_area_vs_use_case",
+    "Q104": "annex_x_overview",
+}
+#: Targets that ask for ONE item of a statutory list stay on the ordinary path:
+#: the whole Article 13(3) list would answer "must the instructions describe
+#: pre-determined changes if none are planned?" at ten times its length.
+SINGLE_ITEM = {"N45_t2"}
+#: Q10 targets that ask how a deployer becomes the provider take the Article 25(1)
+#: reclassification verdict, which states each route's condition.
+RECLASSIFICATION = {"N10_t3", "N10_t4"}
+#: Known misses, kept so the record is honest. ND_t1 opens "We're a Munich
+#: start-up ...": the scenario opener keeps it with the scenario classifier, and
+#: lifting that guard for the robotic-surgery verdict would fire on a davidath
+#: scenario row (the invariant ``test_r144_emotion_curated`` pins).
+KNOWN_MISSES = {"ND_t1"}
+
+
+def _family_route(row: dict) -> bool:
+    """Does the question reach its family's vetted answer?"""
+    question, family = row["question"], row["family"]
+    if family in STATUTORY_FAMILY:
+        verdict = curated_statutory_verdict(question)
+        return verdict is not None and verdict["name"] == STATUTORY_FAMILY[family]
+    if family == "CASE_D":
+        return impl._detect_robotic_surgery_inquiry(question)
+    if family == "Q10":
+        if row["id"] in RECLASSIFICATION:
+            return impl._detect_reclassification_inquiry(question)
+        return impl._detect_role_difference_inquiry(question)
+    if family == "Q6":
+        return impl._detect_minimal_risk_inquiry(question)
+    raise AssertionError(f"no route rule for family {family}")
+
+
+@pytest.mark.parametrize(
+    "row",
+    [r for r in HELDOUT_1
+     if r["kind"] == "target" and r["id"] not in SINGLE_ITEM | KNOWN_MISSES],
+    ids=lambda r: r["id"],
+)
+def test_a_held_out_set_1_target_reaches_its_verdict(row):
+    assert _family_route(row), row["note"]
+
+
+@pytest.mark.parametrize("rid", sorted(KNOWN_MISSES))
+def test_a_known_miss_is_still_missed(rid):
+    """A tripwire: if this starts passing, move the row out of KNOWN_MISSES."""
+    row = next(r for r in HELDOUT_1 if r["id"] == rid)
+    assert not _family_route(row)
+
+
+@pytest.mark.parametrize(
+    "row", [r for r in HELDOUT_1 if r["kind"] == "control"], ids=lambda r: r["id"]
+)
+def test_a_held_out_set_1_control_does_not(row):
+    assert not _family_route(row), row["note"]
+
+
+@pytest.mark.parametrize("rid", sorted(SINGLE_ITEM))
+def test_a_single_item_ask_stays_on_the_ordinary_path(rid):
+    row = next(r for r in HELDOUT_1 if r["id"] == rid)
+    assert curated_statutory_verdict(row["question"]) is None
+
+
+def _set_1(rid: str) -> str:
+    return next(r["question"] for r in HELDOUT_1 if r["id"] == rid)
+
+
+@pytest.mark.parametrize(("rid", "lead"), [
+    ("N17_t1", Q17_YES_LEAD), ("N17_t2", Q17_YES_LEAD), ("N17_t3", "No:"), ("N17_t4", "No:"),
+])
+def test_the_amendment_lead_follows_the_shape(rid, lead):
+    # At the verdict: on the wire, N17_t2 ("place-based predictive policing") also
+    # gets the route's Article 5(1)(d) prefix, a gatekeeper match outside R469.
+    assert curated_statutory_verdict(_set_1(rid))["answer"].startswith(lead)
+
+
+def test_a_new_area_rephrasing_is_answered_no_on_the_wire(ask):
+    assert ask(_set_1("N17_t3"))["answer"].startswith("No:")
+
+
+def test_a_headings_ask_without_healthcare_gets_the_headings_only(ask):
+    """"List every area heading ... in full": the healthcare paragraph is unasked."""
+    answer = ask(_set_1("N96_t2"))["answer"]
+    for heading in ANNEX_III_AREAS:
+        assert heading in answer.lower()
+    assert "Healthcare decision making is not one of them" not in answer
+
+
+def test_a_named_annex_x_system_gets_the_transitional_answer(ask):
+    answer = ask(_set_1("N104_t1"))["answer"]
+    assert "31 December 2030" in answer and "2 February 2025" in answer
+
+
+@pytest.mark.parametrize("rid", ["N74_t1", "N74_t3", "N16_t1"])
+def test_an_anchorless_statutory_shape_is_in_scope(ask, rid):
+    """Offline, these were refused as conversational: they name no AI Act anchor."""
+    assert ask(_set_1(rid))["references"], "the scope gate refused a statutory shape"
 
 
 # ── 4. The switch ───────────────────────────────────────────────────────────

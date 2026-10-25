@@ -64,7 +64,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 SETS = {
+    # Held-out set 1 measured iteration 1 and was then read to design iteration 2.
     "heldout": HERE / "heldout_rephrasings.json",
+    # Held-out set 2, written blind after iteration 1, measures iteration 2.
+    "heldout2": HERE / "heldout_rephrasings_2.json",
     "dev": REPO / "docs" / "measurements" / "r467" / "heldout_rephrasings.json",
 }
 REFERENCES = HERE / "reference_positions.json"
@@ -138,7 +141,9 @@ def _labeller():
 # ── arm A: production ────────────────────────────────────────────────────────
 
 
-def live(set_name: str, out: Path, questions: Path | None) -> int:
+def live(set_name: str, out: Path, questions: Path | None, ids: set[str] | None = None) -> int:
+    """Ask production; with ``ids``, only those rows (the ones the change moves:
+    every other row is a tie by construction and needs no production answer)."""
     from dotenv import dotenv_values
 
     key = dotenv_values(REPO / ".env").get("P2P_REGENOLD_API_KEY") or ""
@@ -155,7 +160,7 @@ def live(set_name: str, out: Path, questions: Path | None) -> int:
     done = {r["id"] for r in run["rows"] if "answer" in r}
     run["rows"] = [r for r in run["rows"] if r["id"] in done]
     for row in _rows(set_name, questions):
-        if row["id"] in done:
+        if row["id"] in done or (ids is not None and row["id"] not in ids):
             continue
         body = json.dumps([{"role": "user", "content": row["question"]}]).encode("utf-8")
         req = urllib.request.Request(BASE + "/api/v1/regenold/eu-ai-act/ask", data=body, headers={
@@ -244,7 +249,52 @@ def label_diff(main: Path, branch: Path, out: Path) -> int:
     return 0
 
 
+#: The curated route each family's targets should take (a control should not).
+FAMILY_ROUTES = {
+    "Q74": {"deepfake_artistic_disclosure"},
+    "Q16": {"workplace_emotion_and_stress"},
+    "CASE_D": {"_detect_robotic_surgery_inquiry"},
+    "Q45": {"instructions_for_use_categories"},
+    "Q96": {"annex_iii_areas_healthcare"},
+    "Q10": {"_detect_role_difference_inquiry", "_detect_reclassification_inquiry"},
+    "Q17": {"annex_iii_amendment"},
+    "Q95": {"annex_iii_area_vs_use_case"},
+    "Q104": {"annex_x_overview"},
+    "Q6": {"_detect_minimal_risk_inquiry"},
+}
+
+
+def routing(route_paths: list[Path]) -> int:
+    """Per arm: targets that reach their family's vetted answer, and controls that do."""
+    for path in route_paths:
+        rows = _load(path)["rows"]
+        targets = [r for r in rows if r["kind"] == "target"]
+        controls = [r for r in rows if r["kind"] == "control"]
+        hit = [r for r in targets if r["label"] in FAMILY_ROUTES.get(r["family"], set())]
+        other = [r for r in targets if r["label"] and r not in hit]
+        false = [r for r in controls if r["label"] in FAMILY_ROUTES.get(r["family"], set())]
+        print(f"{path.name}: targets {len(hit)}/{len(targets)} reach their family's answer"
+              f" (+{len(other)} another curated answer); controls {len(false)}/{len(controls)}"
+              f" reach the family's answer")
+    return 0
+
+
 # ── pair the arms ────────────────────────────────────────────────────────────
+
+
+def _same_offline(m: dict, b: dict) -> bool:
+    return m["label"] == b["label"] and (m["answer"], m["references"]) == (
+        b["answer"], b["references"])
+
+
+def changed_ids(main_path: Path, branch_paths: list[Path], out: Path) -> int:
+    """The rows any branch serves differently from main offline: what ``live`` asks."""
+    main_rows = {r["id"]: r for r in _load(main_path)["rows"]}
+    ids = sorted({r["id"] for path in branch_paths for r in _load(path)["rows"]
+                  if not _same_offline(main_rows[r["id"]], r)})
+    _save(out, {"main": str(main_path), "branches": [str(p) for p in branch_paths], "ids": ids})
+    print(f"wrote {out}: {len(ids)} rows differ")
+    return 0
 
 
 def pairs(set_name: str, live_path: Path, main_path: Path, branch_path: Path, out: Path) -> int:
@@ -256,17 +306,18 @@ def pairs(set_name: str, live_path: Path, main_path: Path, branch_path: Path, ou
         a, m = live_rows.get(rid, {}), main_rows[rid]
         row = {k: b[k] for k in ("id", "family", "kind", "question")}
         row.update(label_main=m["label"], label_branch=b["label"])
+        if _same_offline(m, b):
+            # The branch serves this question exactly as main does: a tie by
+            # construction, so no production answer is needed.
+            row.update(B_source="unchanged offline", changed=False)
+            rows.append(row)
+            continue
         if "answer" not in a:
             row.update(skipped="no production answer", changed=False)
             rows.append(row)
             continue
         row.update(A=a["answer"], A_refs=a["references"] or [])
-        same_offline = (m["label"] == b["label"]
-                        and (m["answer"], m["references"]) == (b["answer"], b["references"]))
-        if same_offline:
-            # The branch serves this question exactly as main does.
-            row.update(B=row["A"], B_refs=row["A_refs"], B_source="unchanged offline")
-        elif b["label"] and not b["references"]:
+        if b["label"] and not b["references"]:
             # A curated verdict always cites; no references means the offline
             # scope gate refused the question, which production's LLM gate may not.
             row.update(skipped="refused offline by the scope gate", changed=False)
@@ -444,11 +495,17 @@ def main() -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("live", "route"):
         p = sub.add_parser(name)
-        p.add_argument("--set", required=True, choices=("heldout", "dev", "pool"))
+        p.add_argument("--set", required=True, choices=("heldout", "heldout2", "dev", "pool"))
         p.add_argument("--out", required=True)
         p.add_argument("--questions")
         if name == "route":
             p.add_argument("--repo", required=True)
+        else:
+            p.add_argument("--ids-file", help="a changed-ids output: ask only those rows")
+    p = sub.add_parser("changed")
+    p.add_argument("--main", required=True)
+    p.add_argument("--branch", required=True, action="append")
+    p.add_argument("--out", required=True)
     p = sub.add_parser("pairs")
     p.add_argument("--set", required=True)
     p.add_argument("--live", required=True)
@@ -467,10 +524,15 @@ def main() -> int:
     p.add_argument("--out", required=True)
     p = sub.add_parser("report")
     p.add_argument("pairs", nargs="+")
+    p = sub.add_parser("routing")
+    p.add_argument("routes", nargs="+")
     args = ap.parse_args()
     questions = Path(args.questions) if getattr(args, "questions", None) else None
     if args.cmd == "live":
-        return live(args.set, Path(args.out), questions)
+        ids = set(_load(Path(args.ids_file))["ids"]) if args.ids_file else None
+        return live(args.set, Path(args.out), questions, ids)
+    if args.cmd == "changed":
+        return changed_ids(Path(args.main), [Path(b) for b in args.branch], Path(args.out))
     if args.cmd == "route":
         return route(args.set, Path(args.repo), Path(args.out), questions)
     if args.cmd == "pairs":
@@ -481,6 +543,8 @@ def main() -> int:
         return labels(Path(args.repo), Path(args.out), Path(args.corpus))
     if args.cmd == "label-diff":
         return label_diff(Path(args.main), Path(args.branch), Path(args.out))
+    if args.cmd == "routing":
+        return routing([Path(p) for p in args.routes])
     return report([Path(p) for p in args.pairs])
 
 
