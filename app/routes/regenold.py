@@ -1459,6 +1459,10 @@ def _engine_cache_key(
             # answer cites exactly its declared references.
             "REGENOLD_CURATED_FULL_TEXT",
             "REGENOLD_STATUTORY_REFS_PINNED",
+            # R468 — a colon-introduced list stays one sentence, and a meta-leak
+            # phrase matches only at a word start ("paragraph" is not "graph").
+            "REGENOLD_LIST_INLINE",
+            "REGENOLD_META_LEAK_WORD_START",
             # R453 — a curated answer backs an Annex I point only by naming its Act.
             "REGENOLD_CURATED_ANNEX_I_ACT_BACKING",
             # R454 — Annex I points are chosen by the Act the question describes.
