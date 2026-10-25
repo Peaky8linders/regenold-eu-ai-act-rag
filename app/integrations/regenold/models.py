@@ -791,13 +791,37 @@ def _is_label_only_sentence(sentence: str) -> bool:
     return bool(_META_LABEL_ONLY_RE.match(sentence.strip()))
 
 
+def _meta_leak_word_start_enabled() -> bool:
+    """R468 meta-leak phrases match at a word start (deny-list; ``=0`` restores substrings)."""
+    return os.getenv("REGENOLD_META_LEAK_WORD_START", "1").strip().lower() not in {
+        "0", "off", "false", "no",
+    }
+
+
+def _word_start_pattern(phrases: tuple[str, ...]) -> re.Pattern[str]:
+    # A leading boundary only, so a plural or suffix ("knowledge graphs") still
+    # matches while "paragraph does not" no longer reads as "graph does not".
+    return re.compile(r"(?<![a-z0-9])(?:" + "|".join(map(re.escape, phrases)) + ")")
+
+
+_META_LEAK_RE = _word_start_pattern(_META_LEAK_SUBSTRINGS)
+_META_LEAK_R265_RE = _word_start_pattern(_META_LEAK_SUBSTRINGS_R265)
+
+
 def _sentence_has_meta_leak(sentence: str) -> bool:
     """Should this sentence be dropped because it talks about our internals?
 
     True iff the sentence contains any phrase from
-    :data:`_META_LEAK_SUBSTRINGS` (case-insensitive substring match).
+    :data:`_META_LEAK_SUBSTRINGS` (case-insensitive). R468 — the phrase must
+    start a word: as plain substrings, "graph does not", "graph provides" and
+    "graph contains" matched every "paragraph" and "subparagraph", and deleted
+    the sentence as meta-commentary (it deleted R467's Article 25(2) sentence).
     """
     low = sentence.lower()
+    if _meta_leak_word_start_enabled():
+        if _META_LEAK_RE.search(low):
+            return True
+        return bool(_strip_meta_r265_enabled() and _META_LEAK_R265_RE.search(low))
     if any(s in low for s in _META_LEAK_SUBSTRINGS):
         return True
     if _strip_meta_r265_enabled() and any(
@@ -897,6 +921,88 @@ def _flatten_table_row(ln: str) -> str:
     return ", ".join(cells)
 
 
+# R468 — a list the answer introduces with a colon stays ONE sentence.
+#
+# ``_strip_markdown`` makes every line a sentence and turns a line-final colon
+# into a period, so "The other required contents are:" plus bullets shipped as
+# "The other required contents are. The provider's identity and contact
+# details. ..." (live held-out row H45_b; 20-odd recorded live answers carry the
+# shape: "The eight areas are. Biometrics. Critical infrastructure."). The run
+# is inlined instead: "The other required contents are: the provider's identity
+# and contact details; ...". Only a prose intro qualifies: not a heading, not a
+# list item, not a structural label, at least two words ("These include:"),
+# followed directly by list items that are each a single clause. Anything else keeps the line-per-
+# sentence behaviour. The engine's own drafts carry no such lists, so this
+# reaches Stage-2 answers.
+_LIST_ITEM_LINE_RE = re.compile(r"^\s*(?:[-*+•]|\d+[.)])\s+(?P<body>\S.*?)\s*$")
+_EMPHASIS_EDGE_RE = re.compile(r"^[*_]+|[*_]+$")
+_ITEM_SENTENCE_BREAK_RE = re.compile(r"[.!?]\s+[A-Z(]")
+#: Leading words of a list item that keep their capital when inlined.
+_INLINE_KEEP_CAPITAL = frozenset({
+    "Article", "Articles", "Annex", "Annexes", "Recital", "Recitals", "Regulation",
+    "Directive", "Commission", "Council", "Parliament", "Union", "Member", "Chapter",
+    "Section", "Board", "Office", "Court", "European", "Europe",
+})
+
+
+def _list_inline_enabled() -> bool:
+    """R468 inline colon-introduced lists (deny-list; ``=0`` restores line-per-sentence)."""
+    return os.getenv("REGENOLD_LIST_INLINE", "1").strip().lower() not in {
+        "0", "off", "false", "no",
+    }
+
+
+def _is_list_intro(line: str) -> bool:
+    core = _EMPHASIS_EDGE_RE.sub("", line.strip())
+    if not core.endswith(":") or line.lstrip().startswith("#"):
+        return False
+    if _LIST_ITEM_LINE_RE.match(line):
+        return False
+    words = _EMPHASIS_EDGE_RE.sub("", core[:-1]).split()
+    return len(words) >= 2 and not _META_LABEL_ONLY_RE.match(" ".join(words))
+
+
+def _inline_item(body: str) -> str | None:
+    """One list item as an inline clause, or None when it is more than one sentence."""
+    text = body.strip().rstrip(".;,").strip()
+    if not text or _ITEM_SENTENCE_BREAK_RE.search(text):
+        return None
+    lead = re.match(r"([*_]*)([A-Za-z][\w'-]*)", text)
+    if lead:
+        word = lead.group(2)
+        if word[0].isupper() and word[1:2].islower() and word not in _INLINE_KEEP_CAPITAL:
+            start = lead.start(2)
+            text = text[:start] + word[0].lower() + text[start + 1:]
+    return text
+
+
+def _inline_colon_lists(text: str) -> str:
+    """Rewrite each "<prose intro>:" + list-item run as one inline sentence."""
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if _is_list_intro(lines[i]):
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            items: list[str] = []
+            while j < len(lines):
+                match = _LIST_ITEM_LINE_RE.match(lines[j])
+                if not match:
+                    break
+                items.append(match.group("body"))
+                j += 1
+            clauses = [_inline_item(item) for item in items]
+            if clauses and all(clauses):
+                out.append(f"{lines[i].rstrip()} {'; '.join(clauses)}.")
+                i = j
+                continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
 def _strip_markdown(text: str) -> str:
     """Convert markdown-formatted prose to plain prose with hard sentence breaks.
 
@@ -920,6 +1026,10 @@ def _strip_markdown(text: str) -> str:
     if not text:
         return text
     out = text
+    # R468 — inline "<intro>:" + list runs first, while list markers still show
+    # which lines are items.
+    if _list_inline_enabled():
+        out = _inline_colon_lists(out)
     # Drop heading MARKERS (keep the line's prose — see _MD_HEADING_RE
     # note: consuming the whole line deleted heading-line verdict
     # sentences and emptied truncated fragments). Mid-line markers from
@@ -1615,7 +1725,8 @@ def normalise_answer_for_regenold(
     # sentence. The switch is set only for the pinned verdicts, so the other
     # curated answers keep the cap (lifting it for them restored an uncited
     # "Typical examples are AI-enabled spam filters ..." on the minimal-risk
-    # answer, a separate change to measure).
+    # answer). R468 removed that sentence and gave every curated sentence a
+    # provision anchor instead, so the cap has nothing in them it may drop.
     if _curated_full and not _no_cap:
         max_sentences = 12
         _skip_char_cap = True
