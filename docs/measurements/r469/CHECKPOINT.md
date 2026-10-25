@@ -99,7 +99,8 @@ emotion verdict ("Can we use emotion recognition on our employees in the office?
 the role difference ("We built an internal AI for our own HR use, provider or
 deployer?"), 4 to the instructions-for-use verdict ("What must the instructions for use
 contain?"), and 1 to the Annex III amendment ("Is the Commission empowered to update the
-high-risk list?"). The A/B below judges all 19.
+high-risk list?"). The A/B below pairs all 19; the judge reached 7 of them before it was
+stopped.
 
 ### Paired A/B (stopped after 10 of 61 pairs)
 
