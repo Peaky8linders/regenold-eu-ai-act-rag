@@ -1,0 +1,62 @@
+{
+ "pool": 1584,
+ "questions": [
+  "Can an employer use AI to infer employees' emotions at work from their facial expressions?",
+  "Can an employer use emotion recognition on staff?",
+  "Can we track our employees emotional state with AI cameras?",
+  "Can we use AI to detect the emotional state of our call-centre staff?",
+  "Can we use an AI system that infers the emotions of our employees during performance reviews?",
+  "Can we use emotion recognition on our employees in the office?",
+  "Is the Commission empowered to update the high-risk list?",
+  "What must Article 13 instructions for use contain?",
+  "What must a provider include in the instructions for use?",
+  "What must a provider of a high-risk AI system supply in the instructions for use?",
+  "What must the instructions for use contain?"
+ ],
+ "moves": {
+  "Can an employer use AI to infer employees' emotions at work from their facial expressions?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Can an employer use emotion recognition on staff?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Can we track our employees emotional state with AI cameras?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Can we use AI to detect the emotional state of our call-centre staff?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Can we use an AI system that infers the emotions of our employees during performance reviews?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Can we use emotion recognition on our employees in the office?": [
+   null,
+   "workplace_emotion_and_stress"
+  ],
+  "Is the Commission empowered to update the high-risk list?": [
+   null,
+   "annex_iii_amendment"
+  ],
+  "What must Article 13 instructions for use contain?": [
+   null,
+   "instructions_for_use_categories"
+  ],
+  "What must a provider include in the instructions for use?": [
+   null,
+   "instructions_for_use_categories"
+  ],
+  "What must a provider of a high-risk AI system supply in the instructions for use?": [
+   null,
+   "instructions_for_use_categories"
+  ],
+  "What must the instructions for use contain?": [
+   null,
+   "instructions_for_use_categories"
+  ]
+ }
+}

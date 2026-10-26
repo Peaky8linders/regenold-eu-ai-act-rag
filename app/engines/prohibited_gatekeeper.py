@@ -47,6 +47,7 @@ a prohibition keyword should lift this directly.
 """
 from __future__ import annotations
 
+import os
 import re
 from functools import lru_cache
 
@@ -178,6 +179,98 @@ _SUB_REF_REQUIRED_QUALIFIERS: dict[str, tuple[re.Pattern[str], ...]] = {
 }
 
 
+#: R470 — Article 5(1)(d) concerns risk assessments of NATURAL PERSONS: AI
+#: systems that assess or predict the risk of a natural person committing a
+#: criminal offence, based solely on profiling or on assessing personality traits
+#: and characteristics. Recital 42: the prohibition "does not refer to or touch
+#: upon risk analytics that are not based on the profiling of individuals". The
+#: keyword "predictive policing" matches both, so a question about a tool that
+#: forecasts WHERE or WHEN crime will occur got the Article 5(1)(d) verdict
+#: prepended (R469 held-out row N17_t2), and the R376 guard would delete a
+#: Stage-2 sentence saying Article 5 does not apply.
+#:
+#: A place cue takes a question out of Art. 5.1.d unless the question also
+#: assesses people (:data:`_PERSON_ASSESSMENT_CUES`, not negated), so a
+#: comparison of the two kinds, or a hotspot tool that also scores residents,
+#: keeps the prohibition. Narrowing only, like the qualifiers above.
+_PLACE_BASED_CUES: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\b(?:place|location|area|neighbou?rhood|district)[- ]based\b", re.I),
+    re.compile(r"\bgeo(?:graphic(?:al)?|spatial)\b", re.I),
+    re.compile(r"\bhot[- ]?spots?\b|\bheat[- ]?maps?\b|\bcrime\s+(?:maps?|mapping)\b", re.I),
+    # "where crime will happen", "when burglaries are likely".
+    re.compile(
+        r"\b(?:where|when)\s+(?:and\s+(?:where|when)\s+)?(?:[\w'’-]+\s+){0,3}?"
+        r"(?:crimes?|offen[cs]es?|burglar\w*|thefts?|robber\w*|violence|incidents?|"
+        r"disorder|break-ins?|shoplifting|vandalism|assaults?)\s+(?:\w+\s+){0,2}?"
+        r"(?:will|would|is|are|may|might|could|tends?|happens?|occurs?|likely)\b",
+        re.I,
+    ),
+    # "each district", "which neighbourhoods", "high-crime areas".
+    re.compile(
+        r"\b(?:each|every|which|what|particular|specific|certain|high[- ]crime)\s+"
+        r"(?:[\w'’-]+\s+)?(?:areas?|neighbou?rhoods?|districts?|streets?|locations?|places?|"
+        r"zones?|blocks?|wards?|boroughs?|precincts?|postcodes?|grid\s+(?:cells?|squares?))\b",
+        re.I,
+    ),
+    re.compile(r"\brather\s+than\s+(?:who|which\s+(?:people|persons|individuals))\b", re.I),
+)
+
+#: Person-level assessment: profiling, personality traits, or scoring, ranking or
+#: flagging people. Any one of these, not negated, keeps a place-based question
+#: on Art. 5.1.d.
+_PERSON_ASSESSMENT_CUES: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bprofil(?:e|es|ed|ing)\b", re.I),
+    re.compile(
+        r"\bpersonality\b|\bpersonal\s+(?:data|characteristics|traits|details|history)\b", re.I,
+    ),
+    re.compile(
+        r"\b(?:scores?|scored|scoring|ranks?|ranked|ranking|rates?|rated|rating|flags?|flagged|"
+        r"flagging|labels?|labelled|labeling|labelling|identif(?:y|ies|ied|ying)|"
+        r"predicts?|predicted|predicting|assess(?:es|ed|ing)?|evaluat(?:e|es|ed|ing))\s+"
+        r"(?:out\s+)?(?:[\w'’-]+\s+){0,3}?(?:individuals?|persons?|people|residents?|suspects?|"
+        r"citizens?|inhabitants?|youths?|teenagers?|offenders?|tenants?|passengers?|visitors?)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:individuals?|persons?|people|residents?|suspects?|citizens?|inhabitants?)"
+        r"(?:['’]s?)?\s+(?:[\w'’-]+\s+){0,2}?(?:criminal\s+)?(?:risk|likelihood|chances?|"
+        r"probability|propensity)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\blikely\s+(?:offenders?|criminals?|perpetrators?|re-?offenders?|"
+        r"to\s+(?:commit|offend|re-?offend))\b",
+        re.I,
+    ),
+)
+
+#: A negator within two words before a person cue ("without profiling any
+#: individual", "not scoring residents") cancels it.
+_PERSON_CUE_NEGATED_RE = re.compile(
+    r"\b(?:not|no|never|nor|without|rather\s+than|instead\s+of)\s+(?:[\w'’-]+\s+){0,2}$", re.I,
+)
+
+
+def place_based_policing_enabled() -> bool:
+    """R470 — the place-based exclusion on Art. 5.1.d (deny-list; ``=0`` reverts)."""
+    return os.getenv("REGENOLD_PLACE_BASED_POLICING", "1").strip().lower() not in {
+        "0", "off", "false", "no",
+    }
+
+
+def _assesses_people(text: str) -> bool:
+    for rx in _PERSON_ASSESSMENT_CUES:
+        for match in rx.finditer(text):
+            if not _PERSON_CUE_NEGATED_RE.search(text[max(0, match.start() - 40):match.start()]):
+                return True
+    return False
+
+
+def _forecasts_places_not_people(text: str) -> bool:
+    """True when the question is about forecasting places or times, not people."""
+    return any(rx.search(text) for rx in _PLACE_BASED_CUES) and not _assesses_people(text)
+
+
 def _sub_ref_excluded_by_question(sub_ref: str, question: str) -> bool:
     """True when ``question`` carries a qualifier that puts it outside ``sub_ref``.
 
@@ -191,6 +284,8 @@ def _sub_ref_excluded_by_question(sub_ref: str, question: str) -> bool:
     required = _SUB_REF_REQUIRED_QUALIFIERS.get(sub_ref)
     if required and not any(rx.search(text) for rx in required):
         return True
+    if sub_ref == "Art. 5.1.d":
+        return place_based_policing_enabled() and _forecasts_places_not_people(text)
     patterns = _SUB_REF_NEGATIVE_QUALIFIERS.get(sub_ref)
     if not patterns:
         return False

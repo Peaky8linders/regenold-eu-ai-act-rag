@@ -1,0 +1,521 @@
+{
+ "set": "pool",
+ "live": "docs\\measurements\\r469\\ab_live_pool.json",
+ "commit": "16b85856ccc0",
+ "rows": [
+  {
+   "id": "P001",
+   "family": null,
+   "kind": "pool",
+   "question": "Are we a provider or deployer if we significantly configure a third party medical model under Article 25?",
+   "label_main": null,
+   "label_branch": "_detect_role_difference_inquiry",
+   "A": "Deployer by default. Configuring a third-party medical model within its intended purpose and the provider's instructions does not by itself make the operator a provider. Under Article 25(1), the operator becomes the provider, with all provider obligations, only if it puts its own name or trademark on the high-risk system, makes a substantial modification after which the system remains high-risk, or changes the intended purpose of a system that was not high-risk so that it becomes high-risk. If that happens, Article 25(2) provides that the initial provider is no longer the provider of that system, but it must cooperate and supply the information and technical access needed, especially for the conformity assessment.",
+   "A_refs": [
+    "Article 25.1"
+   ],
+   "B": "A provider under Article 3(3) is a natural or legal person, public authority, agency or other body that develops an AI system or a general-purpose AI model, or has one developed, and places it on the market or puts the AI system into service under its own name or trademark, whether for payment or free of charge, while a deployer under Article 3(4) is one that uses an AI system under its authority, except where the system is used in the course of a personal non-professional activity. The roles are not alternatives: putting into service includes the supply of a system for own use (Article 3(11)), so a party that develops a system and puts it into service for its own use under its own name or trademark is both its provider and its deployer, and Recital 83 states that an operator acting in more than one role at the same time should fulfil cumulatively all relevant obligations associated with those roles. Under Article 25(1) a distributor, importer, deployer or other third party is considered to be the provider of a high-risk AI system, and is subject to the obligations of the provider, where it puts its name or trademark on a high-risk AI system already placed on the market or put into service, without prejudice to contractual arrangements stipulating that the obligations are otherwise allocated; where it makes a substantial modification to such a system in such a way that it remains a high-risk AI system pursuant to Article 6; or where it modifies the intended purpose of an AI system, including a general-purpose AI system, that has not been classified as high-risk and has already been placed on the market or put into service, so that the system becomes high-risk in accordance with Article 6.",
+   "B_refs": [
+    "Article 3.3",
+    "Article 3.4",
+    "Article 3.11",
+    "Article 25.1"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true,
+   "pairwise": {
+    "correctness": {
+     "verdict": "tie",
+     "agreed": false
+    },
+    "conciseness": {
+     "verdict": "A",
+     "agreed": true
+    },
+    "tone": {
+     "verdict": "B",
+     "agreed": true
+    }
+   }
+  },
+  {
+   "id": "P002",
+   "family": null,
+   "kind": "pool",
+   "question": "Are we a provider or just a deployer if the customer configures the model?",
+   "label_main": null,
+   "label_branch": "_detect_role_difference_inquiry",
+   "A": "Configuration by the deployer does not change roles: the organisation that develops the system and places it on the market under its own name remains the provider. A deployer that configures the system within the instructions for use stays a deployer, and Article 26(1) requires it to use the system in accordance with those instructions. Under Article 25(1), the deployer becomes the provider of a high-risk system only if it puts its name or trademark on the system, makes a substantial modification while the system remains high-risk, or changes the intended purpose so that the system becomes high-risk. In that case, Article 25(2) says the original provider is no longer the provider of that specific system, but it must cooperate and hand over the necessary information.",
+   "A_refs": [
+    "Article 26",
+    "Article 25.1"
+   ],
+   "B": "A provider under Article 3(3) is a natural or legal person, public authority, agency or other body that develops an AI system or a general-purpose AI model, or has one developed, and places it on the market or puts the AI system into service under its own name or trademark, whether for payment or free of charge, while a deployer under Article 3(4) is one that uses an AI system under its authority, except where the system is used in the course of a personal non-professional activity. The roles are not alternatives: putting into service includes the supply of a system for own use (Article 3(11)), so a party that develops a system and puts it into service for its own use under its own name or trademark is both its provider and its deployer, and Recital 83 states that an operator acting in more than one role at the same time should fulfil cumulatively all relevant obligations associated with those roles. Under Article 25(1) a distributor, importer, deployer or other third party is considered to be the provider of a high-risk AI system, and is subject to the obligations of the provider, where it puts its name or trademark on a high-risk AI system already placed on the market or put into service, without prejudice to contractual arrangements stipulating that the obligations are otherwise allocated; where it makes a substantial modification to such a system in such a way that it remains a high-risk AI system pursuant to Article 6; or where it modifies the intended purpose of an AI system, including a general-purpose AI system, that has not been classified as high-risk and has already been placed on the market or put into service, so that the system becomes high-risk in accordance with Article 6.",
+   "B_refs": [
+    "Article 3.3",
+    "Article 3.4",
+    "Article 3.11",
+    "Article 25.1"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true,
+   "pairwise": {
+    "correctness": {
+     "verdict": "B",
+     "agreed": true
+    },
+    "conciseness": {
+     "verdict": "A",
+     "agreed": true
+    },
+    "tone": {
+     "verdict": "tie",
+     "agreed": false
+    }
+   }
+  },
+  {
+   "id": "P003",
+   "family": null,
+   "kind": "pool",
+   "question": "Are we a provider or just a deployer?",
+   "label_main": null,
+   "label_branch": "_detect_role_difference_inquiry",
+   "A": "Deployer by default, unless an Article 25(1) trigger applies. An operator using an AI system under its own authority is a deployer, but it becomes a provider of a high-risk AI system under Article 25(1) if it puts its name or trademark on a high-risk system already on the market, makes a substantial modification that keeps the system high-risk, or changes a system's intended purpose so that it becomes high-risk. If none of these applies, it stays a deployer under Article 26. That means it must use the system according to the instructions for use, assign human oversight to natural persons with the necessary competence, training and authority, and monitor how the system operates. The facts given do not show whether the system was rebranded, substantially modified or put to a new purpose, and that decides the role.",
+   "A_refs": [
+    "Article 25.1",
+    "Article 26"
+   ],
+   "B": "A provider under Article 3(3) is a natural or legal person, public authority, agency or other body that develops an AI system or a general-purpose AI model, or has one developed, and places it on the market or puts the AI system into service under its own name or trademark, whether for payment or free of charge, while a deployer under Article 3(4) is one that uses an AI system under its authority, except where the system is used in the course of a personal non-professional activity. The roles are not alternatives: putting into service includes the supply of a system for own use (Article 3(11)), so a party that develops a system and puts it into service for its own use under its own name or trademark is both its provider and its deployer, and Recital 83 states that an operator acting in more than one role at the same time should fulfil cumulatively all relevant obligations associated with those roles. Under Article 25(1) a distributor, importer, deployer or other third party is considered to be the provider of a high-risk AI system, and is subject to the obligations of the provider, where it puts its name or trademark on a high-risk AI system already placed on the market or put into service, without prejudice to contractual arrangements stipulating that the obligations are otherwise allocated; where it makes a substantial modification to such a system in such a way that it remains a high-risk AI system pursuant to Article 6; or where it modifies the intended purpose of an AI system, including a general-purpose AI system, that has not been classified as high-risk and has already been placed on the market or put into service, so that the system becomes high-risk in accordance with Article 6.",
+   "B_refs": [
+    "Article 3.3",
+    "Article 3.4",
+    "Article 3.11",
+    "Article 25.1"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true,
+   "pairwise": {
+    "correctness": {
+     "verdict": "B",
+     "agreed": true
+    },
+    "conciseness": {
+     "verdict": "tie",
+     "agreed": false
+    },
+    "tone": {
+     "verdict": "B",
+     "agreed": true
+    }
+   }
+  },
+  {
+   "id": "P004",
+   "family": null,
+   "kind": "pool",
+   "question": "Can an employer use AI to infer employees' emotions at work from their facial expressions?",
+   "label_main": null,
+   "label_branch": "workplace_emotion_and_stress",
+   "A": "No. Under Article 5(1)(f), placing on the market, putting into service or using an AI system to infer the emotions of a natural person in the workplace is a prohibited practice. Inferring emotions from facial expressions counts, because facial expressions are biometric data. The only exception is where the system is intended to be put in place or placed on the market for medical or safety reasons. An employer that relies on that medical or safety exception is still operating an emotion recognition system, which is high-risk under Annex III(1)(c). As the deployer, the employer must also inform the employees exposed to the system that it is operating, under Article 50(3).",
+   "A_refs": [
+    "Article 5.1.f",
+    "Article 50.3",
+    "Annex III.1.c"
+   ],
+   "B": "No as to the emotions: the use of AI systems to infer emotions of a natural person in the workplace is prohibited under Article 5(1)(f), which prohibits the placing on the market and the putting into service for that specific purpose as well, and an employer that runs such a system on its own staff commits the third of those acts. The only Article 5(1)(f) exception is where the use of the AI system is intended to be put in place or placed on the market for medical or safety reasons, and improving efficiency or raising productivity is neither. Stress is separate: Recital 18 excludes physical states such as pain or fatigue from the notion of emotions and names stress in neither list, so a system inferring stress as a physical state may fall outside Article 5(1)(f), and on that branch a system intended to monitor and evaluate the performance and behaviour of persons in work-related relationships is high-risk under Article 6(2) and Annex III, point 4(b), unless Article 6(3) applies, and the company must then meet the Article 26 deployer obligations, while Article 5(1)(f) has applied since 2 February 2025 and the obligations attaching to a high-risk Annex III system apply from 2 August 2026.",
+   "B_refs": [
+    "Article 5.1.f",
+    "Article 6.2",
+    "Annex III.4.b",
+    "Article 26"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true,
+   "pairwise": {
+    "correctness": {
+     "verdict": "tie",
+     "agreed": false
+    },
+    "conciseness": {
+     "verdict": "tie",
+     "agreed": false
+    },
+    "tone": {
+     "verdict": "tie",
+     "agreed": false
+    }
+   }
+  },
+  {
+   "id": "P005",
+   "family": null,
+   "kind": "pool",
+   "question": "Can an employer use emotion recognition on staff?",
+   "label_main": null,
+   "label_branch": "workplace_emotion_and_stress",
+   "A": "No. Article 5(1)(f) prohibits placing on the market, putting into service for this specific purpose, or using AI systems that infer the emotions of a natural person in the workplace. An employer therefore may not deploy emotion recognition on staff. The only exception is where the AI system is intended to be put in place or placed on the market for medical or safety reasons. That carve-out is narrow and does not cover monitoring for productivity, engagement or performance.",
+   "A_refs": [
+    "Article 5.1.f"
+   ],
+   "B": "No as to the emotions: the use of AI systems to infer emotions of a natural person in the workplace is prohibited under Article 5(1)(f), which prohibits the placing on the market and the putting into service for that specific purpose as well, and an employer that runs such a system on its own staff commits the third of those acts. The only Article 5(1)(f) exception is where the use of the AI system is intended to be put in place or placed on the market for medical or safety reasons, and improving efficiency or raising productivity is neither. Stress is separate: Recital 18 excludes physical states such as pain or fatigue from the notion of emotions and names stress in neither list, so a system inferring stress as a physical state may fall outside Article 5(1)(f), and on that branch a system intended to monitor and evaluate the performance and behaviour of persons in work-related relationships is high-risk under Article 6(2) and Annex III, point 4(b), unless Article 6(3) applies, and the company must then meet the Article 26 deployer obligations, while Article 5(1)(f) has applied since 2 February 2025 and the obligations attaching to a high-risk Annex III system apply from 2 August 2026.",
+   "B_refs": [
+    "Article 5.1.f",
+    "Article 6.2",
+    "Annex III.4.b",
+    "Article 26"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true,
+   "pairwise": {
+    "correctness": {
+     "verdict": "B",
+     "agreed": true
+    },
+    "conciseness": {
+     "verdict": "tie",
+     "agreed": false
+    },
+    "tone": {
+     "verdict": "tie",
+     "agreed": false
+    }
+   }
+  },
+  {
+   "id": "P006",
+   "family": null,
+   "kind": "pool",
+   "question": "Can we track our employees emotional state with AI cameras?",
+   "label_main": null,
+   "label_branch": "workplace_emotion_and_stress",
+   "A": "No. Article 5(1)(f) prohibits placing on the market, putting into service or using AI systems that infer the emotions of natural persons in the workplace, and AI cameras that track employees' emotional state from their biometric data fall within that prohibition. The only exception covers systems placed on the market strictly for medical or safety reasons, such as fatigue detection for drivers or pilots to prevent accidents. That purpose must be the system's purpose from the start, so it cannot be claimed after the fact to cover general emotion monitoring of staff.",
+   "A_refs": [
+    "Article 5"
+   ],
+   "B": "No as to the emotions: the use of AI systems to infer emotions of a natural person in the workplace is prohibited under Article 5(1)(f), which prohibits the placing on the market and the putting into service for that specific purpose as well, and an employer that runs such a system on its own staff commits the third of those acts. The only Article 5(1)(f) exception is where the use of the AI system is intended to be put in place or placed on the market for medical or safety reasons, and improving efficiency or raising productivity is neither. Stress is separate: Recital 18 excludes physical states such as pain or fatigue from the notion of emotions and names stress in neither list, so a system inferring stress as a physical state may fall outside Article 5(1)(f), and on that branch a system intended to monitor and evaluate the performance and behaviour of persons in work-related relationships is high-risk under Article 6(2) and Annex III, point 4(b), unless Article 6(3) applies, and the company must then meet the Article 26 deployer obligations, while Article 5(1)(f) has applied since 2 February 2025 and the obligations attaching to a high-risk Annex III system apply from 2 August 2026.",
+   "B_refs": [
+    "Article 5.1.f",
+    "Article 6.2",
+    "Annex III.4.b",
+    "Article 26"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true,
+   "pairwise": {
+    "correctness": {
+     "verdict": "B",
+     "agreed": true
+    },
+    "conciseness": {
+     "verdict": "tie",
+     "agreed": false
+    },
+    "tone": {
+     "verdict": "tie",
+     "agreed": false
+    }
+   }
+  },
+  {
+   "id": "P007",
+   "family": null,
+   "kind": "pool",
+   "question": "Can we use AI to detect the emotional state of our call-centre staff?",
+   "label_main": null,
+   "label_branch": "workplace_emotion_and_stress",
+   "A": "No. Article 5(1)(f) prohibits placing on the market, putting into service, or using AI systems to infer the emotions of natural persons in the workplace, and monitoring call-centre staff falls within that ban. The only carve-out covers systems intended to be put in place or placed on the market for medical or safety reasons, such as detecting operator fatigue that endangers safety. Monitoring for performance or customer-service quality does not meet that test. A system that does fall within the medical or safety carve-out is still not unregulated: it remains high-risk as emotion recognition under Annex III(1)(c).",
+   "A_refs": [
+    "Article 5",
+    "Annex III.1.c"
+   ],
+   "B": "No as to the emotions: the use of AI systems to infer emotions of a natural person in the workplace is prohibited under Article 5(1)(f), which prohibits the placing on the market and the putting into service for that specific purpose as well, and an employer that runs such a system on its own staff commits the third of those acts. The only Article 5(1)(f) exception is where the use of the AI system is intended to be put in place or placed on the market for medical or safety reasons, and improving efficiency or raising productivity is neither. Stress is separate: Recital 18 excludes physical states such as pain or fatigue from the notion of emotions and names stress in neither list, so a system inferring stress as a physical state may fall outside Article 5(1)(f), and on that branch a system intended to monitor and evaluate the performance and behaviour of persons in work-related relationships is high-risk under Article 6(2) and Annex III, point 4(b), unless Article 6(3) applies, and the company must then meet the Article 26 deployer obligations, while Article 5(1)(f) has applied since 2 February 2025 and the obligations attaching to a high-risk Annex III system apply from 2 August 2026.",
+   "B_refs": [
+    "Article 5.1.f",
+    "Article 6.2",
+    "Annex III.4.b",
+    "Article 26"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true,
+   "pairwise": {
+    "correctness": {
+     "verdict": "B",
+     "agreed": true
+    },
+    "conciseness": {
+     "verdict": "A",
+     "agreed": true
+    },
+    "tone": {
+     "verdict": "A",
+     "agreed": true
+    }
+   }
+  },
+  {
+   "id": "P008",
+   "family": null,
+   "kind": "pool",
+   "question": "Can we use an AI system that infers the emotions of our employees during performance reviews?",
+   "label_main": null,
+   "label_branch": "workplace_emotion_and_stress",
+   "A": "No. Using an AI system to infer employees' emotions during performance reviews is prohibited under Article 5(1)(f). That provision bans placing on the market, putting into service for this specific purpose, or using AI systems that infer the emotions of a natural person in the workplace. The ban applies to the deployer's use, not only to the provider that places the system on the market. The only exception covers systems intended to be put in place or placed on the market for medical or safety reasons. Assessing employee performance is neither, so the exception does not apply.",
+   "A_refs": [
+    "Article 5.1.f",
+    "Article 6.3.d"
+   ],
+   "B": "No as to the emotions: the use of AI systems to infer emotions of a natural person in the workplace is prohibited under Article 5(1)(f), which prohibits the placing on the market and the putting into service for that specific purpose as well, and an employer that runs such a system on its own staff commits the third of those acts. The only Article 5(1)(f) exception is where the use of the AI system is intended to be put in place or placed on the market for medical or safety reasons, and improving efficiency or raising productivity is neither. Stress is separate: Recital 18 excludes physical states such as pain or fatigue from the notion of emotions and names stress in neither list, so a system inferring stress as a physical state may fall outside Article 5(1)(f), and on that branch a system intended to monitor and evaluate the performance and behaviour of persons in work-related relationships is high-risk under Article 6(2) and Annex III, point 4(b), unless Article 6(3) applies, and the company must then meet the Article 26 deployer obligations, while Article 5(1)(f) has applied since 2 February 2025 and the obligations attaching to a high-risk Annex III system apply from 2 August 2026.",
+   "B_refs": [
+    "Article 5.1.f",
+    "Article 6.2",
+    "Annex III.4.b",
+    "Article 26"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true
+  },
+  {
+   "id": "P009",
+   "family": null,
+   "kind": "pool",
+   "question": "Can we use emotion recognition on our employees in the office?",
+   "label_main": null,
+   "label_branch": "workplace_emotion_and_stress",
+   "A": "No. Article 5(1)(f) prohibits placing on the market, putting into service for this specific purpose, or using AI systems to infer the emotions of a natural person in the workplace. Using such a system on employees in the office therefore falls within this prohibited practice. The only exception is where the AI system is intended to be put in place or placed on the market for medical or safety reasons.",
+   "A_refs": [
+    "Article 5.1.f"
+   ],
+   "B": "No as to the emotions: the use of AI systems to infer emotions of a natural person in the workplace is prohibited under Article 5(1)(f), which prohibits the placing on the market and the putting into service for that specific purpose as well, and an employer that runs such a system on its own staff commits the third of those acts. The only Article 5(1)(f) exception is where the use of the AI system is intended to be put in place or placed on the market for medical or safety reasons, and improving efficiency or raising productivity is neither. Stress is separate: Recital 18 excludes physical states such as pain or fatigue from the notion of emotions and names stress in neither list, so a system inferring stress as a physical state may fall outside Article 5(1)(f), and on that branch a system intended to monitor and evaluate the performance and behaviour of persons in work-related relationships is high-risk under Article 6(2) and Annex III, point 4(b), unless Article 6(3) applies, and the company must then meet the Article 26 deployer obligations, while Article 5(1)(f) has applied since 2 February 2025 and the obligations attaching to a high-risk Annex III system apply from 2 August 2026.",
+   "B_refs": [
+    "Article 5.1.f",
+    "Article 6.2",
+    "Annex III.4.b",
+    "Article 26"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true
+  },
+  {
+   "id": "P010",
+   "family": null,
+   "kind": "pool",
+   "question": "Is emotion-recognition in workplaces prohibited?",
+   "label_main": null,
+   "label_branch": "workplace_emotion_and_stress",
+   "A": "Yes, emotion recognition in the workplace is prohibited: Article 5(1)(f) bans placing on the market, putting into service for this specific purpose, or using AI systems to infer emotions of a natural person in the areas of workplace and education institutions. The only exception is where the AI system is intended to be put in place or into the market for medical or safety reasons. A workplace emotion recognition system that falls within that medical or safety carve-out is still high-risk, because Annex III(1)(c) lists AI systems intended to be used for emotion recognition.",
+   "A_refs": [
+    "Article 5.1.f",
+    "Annex III.1.c"
+   ],
+   "B": "Yes as to the emotions: the use of AI systems to infer emotions of a natural person in the workplace is prohibited under Article 5(1)(f), which prohibits the placing on the market and the putting into service for that specific purpose as well, and an employer that runs such a system on its own staff commits the third of those acts. The only Article 5(1)(f) exception is where the use of the AI system is intended to be put in place or placed on the market for medical or safety reasons, and improving efficiency or raising productivity is neither. Stress is separate: Recital 18 excludes physical states such as pain or fatigue from the notion of emotions and names stress in neither list, so a system inferring stress as a physical state may fall outside Article 5(1)(f), and on that branch a system intended to monitor and evaluate the performance and behaviour of persons in work-related relationships is high-risk under Article 6(2) and Annex III, point 4(b), unless Article 6(3) applies, and the company must then meet the Article 26 deployer obligations, while Article 5(1)(f) has applied since 2 February 2025 and the obligations attaching to a high-risk Annex III system apply from 2 August 2026.",
+   "B_refs": [
+    "Article 5.1.f",
+    "Article 6.2",
+    "Annex III.4.b",
+    "Article 26"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true
+  },
+  {
+   "id": "P011",
+   "family": null,
+   "kind": "pool",
+   "question": "Is the Commission empowered to update the high-risk list?",
+   "label_main": null,
+   "label_branch": "annex_iii_amendment",
+   "A": "Yes. Article 7(1) empowers the Commission to adopt delegated acts that amend Annex III by adding or modifying high-risk use-cases, but only where both conditions are met: the AI systems are intended for use in one of the areas already listed in Annex III, and they pose a risk to health and safety, or an adverse impact on fundamental rights, that is equivalent to or greater than the risk posed by the high-risk systems already listed. Under Article 7(3), the Commission may also remove systems from Annex III, but only where they no longer pose any significant risks to fundamental rights, health or safety and the deletion does not decrease the overall level of protection under Union law.",
+   "A_refs": [
+    "Annex III",
+    "Article 7"
+   ],
+   "skipped": "refused offline by the scope gate",
+   "changed": false
+  },
+  {
+   "id": "P012",
+   "family": null,
+   "kind": "pool",
+   "question": "We are a provider of emotion-recognition software sold to employers - is it allowed?",
+   "label_main": null,
+   "label_branch": "workplace_emotion_and_stress",
+   "A": "No. Under Article 5(1)(f), the provider may not place on the market, put into service for this specific purpose, or use an AI system that infers the emotions of natural persons in the workplace. The only exception is a system intended to be put in place or placed on the market for medical or safety reasons. Where that carve-out applies, the employer as deployer must still comply with Article 50(3), which requires it to inform the workers exposed to the emotion recognition system that it is operating and to process their personal data in line with the applicable Union data protection law.",
+   "A_refs": [
+    "Article 5.1.f",
+    "Article 6",
+    "Article 50.3"
+   ],
+   "B": "No as to the emotions: the use of AI systems to infer emotions of a natural person in the workplace is prohibited under Article 5(1)(f), which prohibits the placing on the market and the putting into service for that specific purpose as well, and a provider that places such a system on the market, or puts it into service for that specific purpose, commits the first two of those acts. The only Article 5(1)(f) exception is where the use of the AI system is intended to be put in place or placed on the market for medical or safety reasons, and improving efficiency or raising productivity is neither. Stress is separate: Recital 18 excludes physical states such as pain or fatigue from the notion of emotions and names stress in neither list, so a system inferring stress as a physical state may fall outside Article 5(1)(f), and on that branch a system intended to monitor and evaluate the performance and behaviour of persons in work-related relationships is high-risk under Article 6(2) and Annex III, point 4(b), unless Article 6(3) applies, and the company must then meet the Article 26 deployer obligations, while Article 5(1)(f) has applied since 2 February 2025 and the obligations attaching to a high-risk Annex III system apply from 2 August 2026.",
+   "B_refs": [
+    "Article 5.1.f",
+    "Article 6.2",
+    "Annex III.4.b",
+    "Article 26"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true
+  },
+  {
+   "id": "P013",
+   "family": null,
+   "kind": "pool",
+   "question": "We built an internal AI for our own HR use - never released externally. Are we a provider or just a deployer?",
+   "label_main": null,
+   "label_branch": "_detect_role_difference_inquiry",
+   "A": "Under Article 3(3), a provider is anyone who develops an AI system and puts it into service under its own name, whether for payment or free of charge. Article 3(11) defines putting into service to include supplying a system for one's own use, so internal-only use does not avoid provider status. The organisation is also a deployer under Article 3(4), because it uses the system under its own authority. If the HR system is high-risk, it must meet the full set of provider obligations. It must also meet the deployer duties in Article 26: using the system according to its instructions, assigning human oversight to competent and trained people, monitoring its operation, and keeping the logs for at least six months.",
+   "A_refs": [
+    "Article 3.3",
+    "Article 26.5"
+   ],
+   "B": "A provider under Article 3(3) is a natural or legal person, public authority, agency or other body that develops an AI system or a general-purpose AI model, or has one developed, and places it on the market or puts the AI system into service under its own name or trademark, whether for payment or free of charge, while a deployer under Article 3(4) is one that uses an AI system under its authority, except where the system is used in the course of a personal non-professional activity. The roles are not alternatives: putting into service includes the supply of a system for own use (Article 3(11)), so a party that develops a system and puts it into service for its own use under its own name or trademark is both its provider and its deployer, and Recital 83 states that an operator acting in more than one role at the same time should fulfil cumulatively all relevant obligations associated with those roles. Under Article 25(1) a distributor, importer, deployer or other third party is considered to be the provider of a high-risk AI system, and is subject to the obligations of the provider, where it puts its name or trademark on a high-risk AI system already placed on the market or put into service, without prejudice to contractual arrangements stipulating that the obligations are otherwise allocated; where it makes a substantial modification to such a system in such a way that it remains a high-risk AI system pursuant to Article 6; or where it modifies the intended purpose of an AI system, including a general-purpose AI system, that has not been classified as high-risk and has already been placed on the market or put into service, so that the system becomes high-risk in accordance with Article 6.",
+   "B_refs": [
+    "Article 3.3",
+    "Article 3.4",
+    "Article 3.11",
+    "Article 25.1"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true
+  },
+  {
+   "id": "P014",
+   "family": null,
+   "kind": "pool",
+   "question": "We built an internal AI for our own HR use — never released externally. Are we a provider or just a deployer?",
+   "label_main": null,
+   "label_branch": "_detect_role_difference_inquiry",
+   "A": "Under Article 3(3), a provider is anyone who develops an AI system and puts it into service under its own name, whether for payment or free of charge. Article 3(11) defines putting into service to include supplying a system for one's own use, so internal-only use does not avoid provider status. The organisation is also a deployer under Article 3(4), because it uses the system under its own authority. If the HR system is high-risk, it must meet the full set of provider obligations. It must also meet the deployer duties in Article 26: using the system according to its instructions, assigning human oversight to competent and trained people, monitoring its operation, and keeping the logs for at least six months.",
+   "A_refs": [
+    "Article 3.3",
+    "Article 26.5"
+   ],
+   "B": "A provider under Article 3(3) is a natural or legal person, public authority, agency or other body that develops an AI system or a general-purpose AI model, or has one developed, and places it on the market or puts the AI system into service under its own name or trademark, whether for payment or free of charge, while a deployer under Article 3(4) is one that uses an AI system under its authority, except where the system is used in the course of a personal non-professional activity. The roles are not alternatives: putting into service includes the supply of a system for own use (Article 3(11)), so a party that develops a system and puts it into service for its own use under its own name or trademark is both its provider and its deployer, and Recital 83 states that an operator acting in more than one role at the same time should fulfil cumulatively all relevant obligations associated with those roles. Under Article 25(1) a distributor, importer, deployer or other third party is considered to be the provider of a high-risk AI system, and is subject to the obligations of the provider, where it puts its name or trademark on a high-risk AI system already placed on the market or put into service, without prejudice to contractual arrangements stipulating that the obligations are otherwise allocated; where it makes a substantial modification to such a system in such a way that it remains a high-risk AI system pursuant to Article 6; or where it modifies the intended purpose of an AI system, including a general-purpose AI system, that has not been classified as high-risk and has already been placed on the market or put into service, so that the system becomes high-risk in accordance with Article 6.",
+   "B_refs": [
+    "Article 3.3",
+    "Article 3.4",
+    "Article 3.11",
+    "Article 25.1"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true
+  },
+  {
+   "id": "P015",
+   "family": null,
+   "kind": "pool",
+   "question": "We built an internal AI for our own HR use, provider or deployer?",
+   "label_main": null,
+   "label_branch": "_detect_role_difference_inquiry",
+   "A": "The organisation is the provider because it developed the AI system and put it into service under its own name, even though it is used only internally and nothing is sold. It is also the deployer, because it uses the system under its own authority for its HR processes. Where the HR use makes the system high-risk, the organisation must meet both sets of duties: as provider, a risk management system under Article 9 and the other provider requirements; as deployer, the Article 26 duties to use the system according to its instructions, assign human oversight to competent and trained natural persons, monitor its operation and keep logs for at least six months.",
+   "A_refs": [
+    "Article 26.5",
+    "Article 9.5"
+   ],
+   "B": "A provider under Article 3(3) is a natural or legal person, public authority, agency or other body that develops an AI system or a general-purpose AI model, or has one developed, and places it on the market or puts the AI system into service under its own name or trademark, whether for payment or free of charge, while a deployer under Article 3(4) is one that uses an AI system under its authority, except where the system is used in the course of a personal non-professional activity. The roles are not alternatives: putting into service includes the supply of a system for own use (Article 3(11)), so a party that develops a system and puts it into service for its own use under its own name or trademark is both its provider and its deployer, and Recital 83 states that an operator acting in more than one role at the same time should fulfil cumulatively all relevant obligations associated with those roles. Under Article 25(1) a distributor, importer, deployer or other third party is considered to be the provider of a high-risk AI system, and is subject to the obligations of the provider, where it puts its name or trademark on a high-risk AI system already placed on the market or put into service, without prejudice to contractual arrangements stipulating that the obligations are otherwise allocated; where it makes a substantial modification to such a system in such a way that it remains a high-risk AI system pursuant to Article 6; or where it modifies the intended purpose of an AI system, including a general-purpose AI system, that has not been classified as high-risk and has already been placed on the market or put into service, so that the system becomes high-risk in accordance with Article 6.",
+   "B_refs": [
+    "Article 3.3",
+    "Article 3.4",
+    "Article 3.11",
+    "Article 25.1"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true
+  },
+  {
+   "id": "P016",
+   "family": null,
+   "kind": "pool",
+   "question": "What must Article 13 instructions for use contain?",
+   "label_main": null,
+   "label_branch": "instructions_for_use_categories",
+   "A": "Article 13(3) requires instructions for use of high-risk AI systems to include: (a) the provider’s identity and contact details; (b) the system’s characteristics, capabilities, and limitations, including its intended purpose, expected accuracy, robustness, and cybersecurity, and any risks from misuse; (c) pre-determined changes to the system’s performance; (d) human oversight measures; (e) hardware and maintenance requirements; and (f) mechanisms for collecting and interpreting logs.",
+   "A_refs": [
+    "Article 13.3"
+   ],
+   "B": "Article 13(1) requires a high-risk AI system to be designed and developed so that its operation is sufficiently transparent to enable deployers to interpret its output and use it appropriately, with an appropriate type and degree of transparency. Article 13(2) requires it to be accompanied by instructions for use, in an appropriate digital format or otherwise, containing concise, complete, correct and clear information that is relevant, accessible and comprehensible to deployers. Article 13(3) then sets the minimum content: (a) the identity and contact details of the provider and, where applicable, of its authorised representative; (b) the characteristics, capabilities and limitations of performance, including (i) the intended purpose; (ii) the level of accuracy, including its metrics, robustness and cybersecurity under Article 15 against which the system has been tested and validated and which can be expected, and any known and foreseeable circumstances that may affect that expected level; (iii) any known or foreseeable circumstance, related to the use of the system in accordance with its intended purpose or under conditions of reasonably foreseeable misuse, that may lead to risks to health and safety or fundamental rights under Article 9(2); (iv) where applicable, the technical capabilities and characteristics that provide information relevant to explain its output; (v) when appropriate, its performance regarding specific persons or groups on which it is intended to be used; (vi) when appropriate, specifications for the input data, or any other relevant information on the training, validation and testing data sets used, taking into account the intended purpose; (vii) where applicable, information enabling deployers to interpret the output and use it appropriately; (c) the changes to the system and its performance predetermined by the provider at the initial conformity assessment, if any; (d) the human oversight measures under Article 14, including the technical measures that help deployers interpret the outputs; (e) the computational and hardware resources needed, the expected lifetime and any necessary maintenance and care measures, including their frequency and software updates, to ensure the proper functioning of the system; and (f) where relevant, the mechanisms enabling deployers to collect, store and interpret the logs under Article 12. The Article 13(3) list is a minimum, and the items qualified by where applicable, when appropriate or if any are required only where that condition is met.",
+   "B_refs": [
+    "Article 13.2",
+    "Article 13.3"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true
+  },
+  {
+   "id": "P017",
+   "family": null,
+   "kind": "pool",
+   "question": "What must a provider include in the instructions for use?",
+   "label_main": null,
+   "label_branch": "instructions_for_use_categories",
+   "A": "Under Article 13(2) and (3), a provider of a high-risk AI system must supply instructions for use, in an appropriate digital format or otherwise, containing concise, complete, correct and clear information that deployers can access and understand. The instructions must give the identity and contact details of the provider and any authorised representative, and the system's characteristics, capabilities and limitations of performance: its intended purpose, its tested level of accuracy (with metrics), robustness and cybersecurity, foreseeable circumstances creating risks to health, safety or fundamental rights, its ability to explain its output, its performance on specific persons or groups, input-data and data-set specifications, and information for interpreting its output. They must also cover changes the provider has pre-determined, human oversight measures, computational and hardware resources, expected lifetime, maintenance including software updates, and, where relevant, how deployers can collect and interpret the logs.",
+   "A_refs": [
+    "Article 13"
+   ],
+   "B": "Article 13(1) requires a high-risk AI system to be designed and developed so that its operation is sufficiently transparent to enable deployers to interpret its output and use it appropriately, with an appropriate type and degree of transparency. Article 13(2) requires it to be accompanied by instructions for use, in an appropriate digital format or otherwise, containing concise, complete, correct and clear information that is relevant, accessible and comprehensible to deployers. Article 13(3) then sets the minimum content: (a) the identity and contact details of the provider and, where applicable, of its authorised representative; (b) the characteristics, capabilities and limitations of performance, including (i) the intended purpose; (ii) the level of accuracy, including its metrics, robustness and cybersecurity under Article 15 against which the system has been tested and validated and which can be expected, and any known and foreseeable circumstances that may affect that expected level; (iii) any known or foreseeable circumstance, related to the use of the system in accordance with its intended purpose or under conditions of reasonably foreseeable misuse, that may lead to risks to health and safety or fundamental rights under Article 9(2); (iv) where applicable, the technical capabilities and characteristics that provide information relevant to explain its output; (v) when appropriate, its performance regarding specific persons or groups on which it is intended to be used; (vi) when appropriate, specifications for the input data, or any other relevant information on the training, validation and testing data sets used, taking into account the intended purpose; (vii) where applicable, information enabling deployers to interpret the output and use it appropriately; (c) the changes to the system and its performance predetermined by the provider at the initial conformity assessment, if any; (d) the human oversight measures under Article 14, including the technical measures that help deployers interpret the outputs; (e) the computational and hardware resources needed, the expected lifetime and any necessary maintenance and care measures, including their frequency and software updates, to ensure the proper functioning of the system; and (f) where relevant, the mechanisms enabling deployers to collect, store and interpret the logs under Article 12. The Article 13(3) list is a minimum, and the items qualified by where applicable, when appropriate or if any are required only where that condition is met.",
+   "B_refs": [
+    "Article 13.2",
+    "Article 13.3"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true
+  },
+  {
+   "id": "P018",
+   "family": null,
+   "kind": "pool",
+   "question": "What must a provider of a high-risk AI system supply in the instructions for use?",
+   "label_main": null,
+   "label_branch": "instructions_for_use_categories",
+   "A": "Article 13(2) requires the provider to supply instructions for use, in an appropriate digital format or otherwise, that give deployers concise, complete, correct and clear information that is relevant, accessible and comprehensible. Under Article 13(3), the instructions must cover the identity and contact details of the provider and its authorised representative, the system's characteristics, capabilities and limitations of performance (intended purpose, declared accuracy metrics, robustness and cybersecurity, foreseeable circumstances that may lead to risks, capabilities to explain output, performance for specific persons or groups, input data specifications, and information for interpreting output), any pre-determined changes, human oversight measures, computational and hardware resources, expected lifetime and maintenance including software updates, and the mechanisms for collecting, storing and interpreting logs.",
+   "A_refs": [
+    "Article 13"
+   ],
+   "B": "Article 13(1) requires a high-risk AI system to be designed and developed so that its operation is sufficiently transparent to enable deployers to interpret its output and use it appropriately, with an appropriate type and degree of transparency. Article 13(2) requires it to be accompanied by instructions for use, in an appropriate digital format or otherwise, containing concise, complete, correct and clear information that is relevant, accessible and comprehensible to deployers. Article 13(3) then sets the minimum content: (a) the identity and contact details of the provider and, where applicable, of its authorised representative; (b) the characteristics, capabilities and limitations of performance, including (i) the intended purpose; (ii) the level of accuracy, including its metrics, robustness and cybersecurity under Article 15 against which the system has been tested and validated and which can be expected, and any known and foreseeable circumstances that may affect that expected level; (iii) any known or foreseeable circumstance, related to the use of the system in accordance with its intended purpose or under conditions of reasonably foreseeable misuse, that may lead to risks to health and safety or fundamental rights under Article 9(2); (iv) where applicable, the technical capabilities and characteristics that provide information relevant to explain its output; (v) when appropriate, its performance regarding specific persons or groups on which it is intended to be used; (vi) when appropriate, specifications for the input data, or any other relevant information on the training, validation and testing data sets used, taking into account the intended purpose; (vii) where applicable, information enabling deployers to interpret the output and use it appropriately; (c) the changes to the system and its performance predetermined by the provider at the initial conformity assessment, if any; (d) the human oversight measures under Article 14, including the technical measures that help deployers interpret the outputs; (e) the computational and hardware resources needed, the expected lifetime and any necessary maintenance and care measures, including their frequency and software updates, to ensure the proper functioning of the system; and (f) where relevant, the mechanisms enabling deployers to collect, store and interpret the logs under Article 12. The Article 13(3) list is a minimum, and the items qualified by where applicable, when appropriate or if any are required only where that condition is met.",
+   "B_refs": [
+    "Article 13.2",
+    "Article 13.3"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true
+  },
+  {
+   "id": "P019",
+   "family": null,
+   "kind": "pool",
+   "question": "What must the instructions for use contain?",
+   "label_main": null,
+   "label_branch": "instructions_for_use_categories",
+   "A": "Article 13(3) requires the instructions for use that accompany a high-risk AI system to contain at least the following: the identity and contact details of the provider and of any authorised representative, and the system's characteristics, capabilities and limitations of performance. Those characteristics cover its intended purpose, its tested levels of accuracy, robustness and cybersecurity, foreseeable circumstances creating risks to health, safety or fundamental rights, its capabilities to explain its output, its performance for specific persons or groups, its input and training data specifications, and information for interpreting its output. The instructions must also cover pre-determined changes, human oversight measures, computational and hardware resources, expected lifetime, maintenance measures including software updates, and log-collection mechanisms. Article 13(2) requires this information to be concise, complete, correct, clear, relevant, accessible and comprehensible to deployers.",
+   "A_refs": [
+    "Article 13.3"
+   ],
+   "B": "Article 13(1) requires a high-risk AI system to be designed and developed so that its operation is sufficiently transparent to enable deployers to interpret its output and use it appropriately, with an appropriate type and degree of transparency. Article 13(2) requires it to be accompanied by instructions for use, in an appropriate digital format or otherwise, containing concise, complete, correct and clear information that is relevant, accessible and comprehensible to deployers. Article 13(3) then sets the minimum content: (a) the identity and contact details of the provider and, where applicable, of its authorised representative; (b) the characteristics, capabilities and limitations of performance, including (i) the intended purpose; (ii) the level of accuracy, including its metrics, robustness and cybersecurity under Article 15 against which the system has been tested and validated and which can be expected, and any known and foreseeable circumstances that may affect that expected level; (iii) any known or foreseeable circumstance, related to the use of the system in accordance with its intended purpose or under conditions of reasonably foreseeable misuse, that may lead to risks to health and safety or fundamental rights under Article 9(2); (iv) where applicable, the technical capabilities and characteristics that provide information relevant to explain its output; (v) when appropriate, its performance regarding specific persons or groups on which it is intended to be used; (vi) when appropriate, specifications for the input data, or any other relevant information on the training, validation and testing data sets used, taking into account the intended purpose; (vii) where applicable, information enabling deployers to interpret the output and use it appropriately; (c) the changes to the system and its performance predetermined by the provider at the initial conformity assessment, if any; (d) the human oversight measures under Article 14, including the technical measures that help deployers interpret the outputs; (e) the computational and hardware resources needed, the expected lifetime and any necessary maintenance and care measures, including their frequency and software updates, to ensure the proper functioning of the system; and (f) where relevant, the mechanisms enabling deployers to collect, store and interpret the logs under Article 12. The Article 13(3) list is a minimum, and the items qualified by where applicable, when appropriate or if any are required only where that condition is met.",
+   "B_refs": [
+    "Article 13.2",
+    "Article 13.3"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true
+  }
+ ],
+ "changed": 18
+}

@@ -1,0 +1,38 @@
+{
+ "main": "docs\\measurements\\r469\\offline_main_heldout.json",
+ "branches": [
+  "docs\\measurements\\r469\\offline_branch_heldout.json"
+ ],
+ "ids": [
+  "N104_t1",
+  "N104_t2",
+  "N10_t1",
+  "N10_t2",
+  "N10_t4",
+  "N16_t1",
+  "N16_t2",
+  "N16_t3",
+  "N17_t1",
+  "N17_t2",
+  "N17_t3",
+  "N17_t4",
+  "N45_t1",
+  "N45_t3",
+  "N45_t4",
+  "N6_t1",
+  "N6_t2",
+  "N74_t1",
+  "N74_t2",
+  "N74_t3",
+  "N74_t4",
+  "N95_t1",
+  "N95_t2",
+  "N96_t1",
+  "N96_t2",
+  "N96_t3",
+  "N96_t4",
+  "ND_t2",
+  "ND_t3",
+  "ND_t4"
+ ]
+}

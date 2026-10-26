@@ -52,7 +52,9 @@ def test_minimal_risk_does_not_erase_general_ai_literacy_duties(question):
 def test_scope_identifies_market_acts_for_both_regimes():
     question = "Does the EU AI Act apply to AI systems or AI models or both?"
     answer = impl._deterministic_answer(question, impl.GraphContext(question=question))
-    assert answer.startswith("Both.")
+    # R468 — the verdict lead joins its cited sentence ("Both: Article 2(1)(a)
+    # ..."), so the soft char cap, which drops uncited sentences, cannot drop it.
+    assert answer.startswith("Both: Article 2(1)(a)")
     assert "Article 2(1)(a)" in answer
     assert "putting" in answer and "service" in answer
     assert "placing general-purpose AI models on the market" in answer

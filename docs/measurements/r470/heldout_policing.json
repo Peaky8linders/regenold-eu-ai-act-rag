@@ -1,0 +1,174 @@
+{
+ "written": "2026-10-26",
+ "purpose": "A blind held-out set for R470, written without reference to any detector, to measure whether a fix stops the Article 5(1)(d) prohibition being asserted on place-based crime forecasting while keeping it on person-based risk assessment; not to be used to tune the fix.",
+ "rows": [
+  {
+   "id": "T01",
+   "family": "R470",
+   "kind": "target",
+   "question": "I heard predictive policing is now banned under the AI Act. Does that include tools that only forecast crime hotspots?",
+   "note": "Place-based: a hotspot forecast assesses places, not natural persons, so Article 5(1)(d) does not reach it (Recital 42); the blanket-ban premise is wrong."
+  },
+  {
+   "id": "T02",
+   "family": "R470",
+   "kind": "target",
+   "question": "Can a police force use AI to forecast which streets will see the most burglaries next month?",
+   "note": "Place-based: a street-level burglary forecast assesses no natural person, so Article 5(1)(d) does not prohibit it."
+  },
+  {
+   "id": "T03",
+   "family": "R470",
+   "kind": "target",
+   "question": "Our city council is buying a predictive policing tool from a vendor. It looks at ten years of recorded incidents, the weather and the events calendar, and produces a weekly heat map of the neighbourhoods where street robberies are most likely. Does the AI Act treat it as a high-risk system?",
+   "note": "Place-based: a neighbourhood heat map built from incident, weather and event data is risk analytics not based on profiling individuals, so it is outside Article 5(1)(d)."
+  },
+  {
+   "id": "T04",
+   "family": "R470",
+   "kind": "target",
+   "question": "A metro operator wants a model trained on past pickpocketing reports, station footfall counts and timetables to predict which stations and time slots will see the most thefts. It will use the forecast to schedule its security staff. What does the EU AI Act require of the operator?",
+   "note": "Place- and time-based: a station and time-slot theft forecast used to schedule staff assesses no individual, so Article 5(1)(d) is not engaged."
+  },
+  {
+   "id": "T05",
+   "family": "R470",
+   "kind": "target",
+   "question": "We are a start-up building predictive policing software. The model never touches data about individuals: it divides a city into 250-metre grid cells and estimates the likelihood of vehicle crime in each cell for every eight-hour shift. Can we still sell it in the EU now that the AI Act's prohibitions apply?",
+   "note": "Place- and time-based: grid cells per shift with no data on individuals, so placing the software on the market is not prohibited by Article 5(1)(d)."
+  },
+  {
+   "id": "T06",
+   "family": "R470",
+   "kind": "target",
+   "question": "Quick check: would a model that predicts the hours when bar fights are most likely in the old town count as a prohibited AI practice?",
+   "note": "Time- and place-based: forecasting when assaults are likely in an area assesses no person, so it is not the Article 5(1)(d) prohibited practice."
+  },
+  {
+   "id": "T07",
+   "family": "R470",
+   "kind": "target",
+   "question": "A regional police force runs a predictive policing system that flags the twenty street segments most at risk of knife crime each weekend, using only historical incident data and the time of day. Officers are then sent to patrol those segments. Does Article 5(1)(d) prohibit this?",
+   "note": "Place-based: the officers sent to patrol are mentioned incidentally and nobody is assessed, so Article 5(1)(d) does not prohibit the street-segment forecast."
+  },
+  {
+   "id": "T08",
+   "family": "R470",
+   "kind": "target",
+   "question": "A municipality uses software that produces a burglary risk assessment for each district for the next fortnight, based on past burglary reports and the season. Could the EU tighten the rules on this kind of tool later on?",
+   "note": "Place-based: the 'risk assessment' is of districts, not natural persons, so Article 5(1)(d) does not apply; the ask is whether the rules could tighten later."
+  },
+  {
+   "id": "T09",
+   "family": "R470",
+   "kind": "target",
+   "question": "Could hotspot-style predictive policing be added to the AI Act's banned or high-risk lists in the future?",
+   "note": "Place-based: hotspot forecasting is outside Article 5(1)(d) today; the ask is about future amendment, so the answer must not present it as already prohibited."
+  },
+  {
+   "id": "T10",
+   "family": "R470",
+   "kind": "target",
+   "question": "Ahead of the summer festival season, the city council wants an AI system that predicts which squares and evenings carry the highest risk of drug dealing, based on where and when drugs were seized in previous years. The forecast will be shared with residents' associations so they know when extra officers will be around. Is the council allowed to do this under the AI Act?",
+   "note": "Place- and time-based: a forecast from past seizure locations; residents and officers are mentioned incidentally and never assessed, so Article 5(1)(d) does not apply."
+  },
+  {
+   "id": "T11",
+   "family": "R470",
+   "kind": "target",
+   "question": "Is location-based predictive policing listed as high-risk in Annex III?",
+   "note": "Place-based: location-based forecasting assesses no natural person; the ask is about Annex III, and the answer must not call it prohibited under Article 5(1)(d)."
+  },
+  {
+   "id": "T12",
+   "family": "R470",
+   "kind": "target",
+   "question": "A software vendor sells police forces a dashboard that predicts, for every hour of the coming week, how many car thefts to expect in each postcode area. No personal data goes into the model. What obligations does the AI Act place on the vendor and on the forces that use it?",
+   "note": "Place- and time-based: an hourly forecast per postcode area with no personal data assesses no individual, so Article 5(1)(d) is not engaged; the ask is about obligations."
+  },
+  {
+   "id": "C01",
+   "family": "R470",
+   "kind": "control",
+   "question": "Is predictive policing that scores individuals on their likelihood of committing a crime, based only on profiling, banned under the AI Act?",
+   "note": "Person-based: an individual's crime risk scored solely on profiling is the core case Article 5(1)(d) prohibits."
+  },
+  {
+   "id": "C02",
+   "family": "R470",
+   "kind": "control",
+   "question": "A police force's predictive policing platform maps burglary hotspots. For each hotspot it also lists the people who live there and gives each of them a 'likely offender' score, worked out only by profiling them on age, employment status, household composition and how often they have moved house. Is that second feature allowed under the AI Act?",
+   "note": "Look-alike, person-based: the hotspot map is outside Article 5(1)(d), but scoring each resident as a likely offender by profiling alone is prohibited."
+  },
+  {
+   "id": "C03",
+   "family": "R470",
+   "kind": "control",
+   "question": "A city's municipal police want software that ranks everyone registered as living on a particular street by how likely they are to commit an offence, using nothing but their age, nationality and previous addresses. None of them is suspected of any particular offence. Is this permitted under Regulation (EU) 2024/1689?",
+   "note": "Look-alike, person-based (profiling described without the word): the street only selects the people, each ranked for offending risk on age, nationality and past addresses alone."
+  },
+  {
+   "id": "C04",
+   "family": "R470",
+   "kind": "control",
+   "question": "A vendor offers police forces a predictive policing module that gives young people a 'future violent offender' rating based only on a personality questionnaire measuring impulsivity, aggression and empathy. The rating alone decides who is put on a watch list. Can the vendor sell this in the EU?",
+   "note": "Person-based: an offending rating from a personality questionnaire alone falls under the personality-traits limb of Article 5(1)(d), which also bars placing it on the market."
+  },
+  {
+   "id": "C05",
+   "family": "R470",
+   "kind": "control",
+   "question": "May the police use an algorithm that predicts whether a person will commit a burglary from nothing more than their age, sex, nationality and family situation?",
+   "note": "Person-based (profiling described without the word): an individual burglary prediction from personal characteristics alone falls under Article 5(1)(d)."
+  },
+  {
+   "id": "C06",
+   "family": "R470",
+   "kind": "control",
+   "question": "At the rail stations with the highest theft rates, the transport police want a system that predicts which passengers holding registered travel cards are likely to steal, based solely on profiling each card holder's age, home postcode and travel history. Would this be prohibited?",
+   "note": "Look-alike, person-based: the high-theft stations are only the setting; each passenger is profiled and scored for the risk of committing theft."
+  },
+  {
+   "id": "C07",
+   "family": "R470",
+   "kind": "control",
+   "question": "Under a new predictive policing pilot, the police would take the three neighbourhoods with the highest recorded crime and give every resident aged 14 to 25 a probability of committing violent offences, purely by profiling their school attendance, family background and social media activity. None of them is linked to any investigation. Is the pilot compatible with Article 5 of the AI Act?",
+   "note": "Look-alike, person-based: the neighbourhoods select the population, but each young resident is profiled for violent-offending risk with no link to any investigation."
+  },
+  {
+   "id": "C08",
+   "family": "R470",
+   "kind": "control",
+   "question": "Can police use predictive policing software that labels someone a likely future offender purely because of their personality traits?",
+   "note": "Person-based: labelling someone a likely offender solely on personality traits is the second limb of Article 5(1)(d)."
+  },
+  {
+   "id": "C09",
+   "family": "R470",
+   "kind": "control",
+   "question": "A company sells a 'safer streets' package to police forces and city councils. Besides a heat map of crime by district, it produces a list of named residents of the red districts flagged as 'likely to offend', solely by profiling them on country of birth, income band and number of children. Is that list a prohibited practice even if the heat map is not?",
+   "note": "Look-alike, person-based: the district heat map is outside Article 5(1)(d), but flagging named residents as likely offenders by profiling alone is prohibited."
+  },
+  {
+   "id": "C10",
+   "family": "R470",
+   "kind": "control",
+   "question": "We are a police force planning an AI system that gives every adult in our area a risk score for committing a drug offence, based only on profiling of their personal data such as employment, debts and social contacts. Officers would then run checks on the top five per cent. We assume this is high-risk under Annex III point 6; which requirements would we have to meet?",
+   "note": "Person-based: individual drug-offence risk scores based solely on profiling are prohibited by Article 5(1)(d), not merely high-risk, so the premise must be corrected."
+  },
+  {
+   "id": "C11",
+   "family": "R470",
+   "kind": "control",
+   "question": "Is it lawful to score the people who live in a high-crime area as likely offenders based purely on their personal characteristics?",
+   "note": "Look-alike, person-based: the area only selects the people; scoring each as a likely offender on personal characteristics alone falls under Article 5(1)(d)."
+  },
+  {
+   "id": "C12",
+   "family": "R470",
+   "kind": "control",
+   "question": "A predictive policing vendor markets its tool as 'place-based' because it starts from a map of high-burglary streets. In practice it then gives each person who often visits those streets a burglary risk score derived only from profiling their phone location history, age and previous addresses. Would Article 5(1)(d) apply?",
+   "note": "Look-alike, person-based: despite the 'place-based' label, each frequent visitor is profiled and scored for burglary risk, which Article 5(1)(d) prohibits."
+  }
+ ]
+}

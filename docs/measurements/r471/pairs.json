@@ -1,0 +1,193 @@
+{
+ "rows": [
+  {
+   "set": "heldout",
+   "id": "T05",
+   "kind": "target",
+   "question": "We are a start-up building predictive policing software. The model never touches data about individuals: it divides a city into 250-metre grid cells and estimates the likelihood of vehicle crime in each cell for every eight-hour shift. Can we still sell it in the EU now that the AI Act's prohibitions apply?",
+   "A": "Yes. A place-based crime-forecasting system is not a prohibited practice. Article 5(1)(d) bans only AI systems that assess or predict the risk of a natural person committing a criminal offence based solely on profiling or on assessing personality traits and characteristics. A model that estimates vehicle-crime likelihood per 250-metre grid cell per shift assesses locations, not individuals, so it falls outside that prohibition. It is also likely not high-risk. The law-enforcement use cases in Annex III(6), including the offending-risk assessment in Annex III(6)(d), are framed around natural persons, and an area-level forecast is not a listed use case. The verdict reverses if the product changes in either of two ways. If it links cell scores to named persons so that individuals are risk-assessed solely on profiling, it falls under Article 5(1)(d). If law enforcement authorities use it, or it is used on their behalf, to assess natural persons in a listed way, it becomes high-risk under Annex III(6).",
+   "A_refs": [
+    "Article 5.1.d",
+    "Annex III"
+   ],
+   "A_status": 200,
+   "A_place_high_risk": [],
+   "A_verbatim_draft": false,
+   "B": "Yes. The start-up can sell the software in the EU. A grid-based forecast of vehicle crime is not a prohibited practice and, on the facts given, is not high-risk. The prohibition in Article 5(1)(d) covers only AI systems that make risk assessments of natural persons, to predict whether a natural person will commit a criminal offence, based solely on profiling or on their personality traits and characteristics. An estimate of crime likelihood for each 250-metre cell and eight-hour shift assesses places and time periods, not individuals, so Article 5(1)(d) does not reach it. The law-enforcement use cases in Annex III(6) are likewise framed around natural persons. Annex III(6)(d), for example, covers assessing the risk of a natural person offending or re-offending. Place-based forecasting is not a listed use case, so the system is not high-risk and the Act imposes no mandatory obligations on it. The classification would change if the system started scoring or profiling individuals, such as vehicle owners or residents of a cell. It would then be high-risk under Annex III(6)(d), or prohibited under Article 5(1)(d) where the prediction rests solely on profiling.",
+   "B_refs": [
+    "Article 5.1.d",
+    "Annex III"
+   ],
+   "B_status": 200,
+   "B_place_high_risk": [],
+   "B_verbatim_draft": false,
+   "differs": true,
+   "correctness": {
+    "verdict": "tie",
+    "agreed": false
+   }
+  },
+  {
+   "set": "heldout",
+   "id": "T11",
+   "kind": "target",
+   "question": "Is location-based predictive policing listed as high-risk in Annex III?",
+   "A": "No. Annex III(6) lists law-enforcement uses that target natural persons, such as assessing an individual's risk of offending or re-offending and profiling, but it has no use case for place-based crime forecasting that does not assess individuals. Article 5(1)(d) prohibits only individual criminal risk assessments based solely on profiling or personality traits. Purely location-based prediction is therefore neither prohibited nor listed as high-risk.",
+   "A_refs": [
+    "Annex III.6.d",
+    "Article 5.1.d"
+   ],
+   "A_status": 200,
+   "A_place_high_risk": [],
+   "A_verbatim_draft": false,
+   "B": "No. Location-based predictive policing is not a listed high-risk use case in Annex III. Annex III(6) covers law-enforcement AI that assesses natural persons, such as the risk of a person becoming a victim or offending, and profiling. It does not cover forecasts of where crime will occur. Article 5(1)(d) prohibits only assessments that predict whether an individual will offend based solely on profiling or personality traits, so place-based forecasting is not prohibited either.",
+   "B_refs": [
+    "Annex III.6.d",
+    "Article 5.1.d"
+   ],
+   "B_status": 200,
+   "B_place_high_risk": [],
+   "B_verbatim_draft": false,
+   "differs": true,
+   "correctness": {
+    "verdict": "tie",
+    "agreed": false
+   }
+  },
+  {
+   "set": "heldout",
+   "id": "C02",
+   "kind": "control",
+   "question": "A police force's predictive policing platform maps burglary hotspots. For each hotspot it also lists the people who live there and gives each of them a 'likely offender' score, worked out only by profiling them on age, employment status, household composition and how often they have moved house. Is that second feature allowed under the AI Act?",
+   "A": "No, the per-resident \"likely offender\" score is a prohibited practice under Article 5(1)(d), which bans using an AI system to assess or predict the risk of a natural person committing a criminal offence based solely on profiling or on assessing personality traits and characteristics. The score relies only on age, employment status, household composition and how often residents have moved house, and none of those is an objective and verifiable fact directly linked to a criminal activity. The Article 5(1)(d) exception, which covers AI that supports a human assessment already based on such facts, therefore does not apply. Only an individual risk assessment for law enforcement that is not based solely on profiling falls instead within the high-risk use case in Annex III(6)(d).",
+   "A_refs": [
+    "Article 5.1.d",
+    "Annex III.6.d"
+   ],
+   "A_status": 200,
+   "A_place_high_risk": [],
+   "A_verbatim_draft": false,
+   "B": "No, the per-resident \"likely offender\" score is a prohibited practice under Article 5(1)(d). That provision bans placing on the market, putting into service or using an AI system that assesses or predicts the risk of a natural person committing a criminal offence based solely on profiling or on assessing their personality traits and characteristics. Scoring residents only on age, employment status, household composition and how often they have moved house falls within that ban. The carve-out for systems that support a human assessment already based on objective and verifiable facts directly linked to a criminal activity does not apply, because no such facts are used.",
+   "B_refs": [
+    "Article 5.1.d"
+   ],
+   "B_status": 200,
+   "B_place_high_risk": [],
+   "B_verbatim_draft": false,
+   "differs": true,
+   "correctness": {
+    "verdict": "tie",
+    "agreed": false
+   }
+  },
+  {
+   "set": "heldout",
+   "id": "C04",
+   "kind": "control",
+   "question": "A vendor offers police forces a predictive policing module that gives young people a 'future violent offender' rating based only on a personality questionnaire measuring impulsivity, aggression and empathy. The rating alone decides who is put on a watch list. Can the vendor sell this in the EU?",
+   "A": "No, the vendor cannot sell this module in the EU, because Article 5(1)(d) prohibits placing on the market, putting into service or using an AI system that assesses or predicts the risk of a natural person committing a criminal offence based solely on profiling or on assessing their personality traits and characteristics. The rating comes only from a questionnaire on impulsivity, aggression and empathy, and it alone decides who goes on the watch list. The carve-out in Article 5(1)(d) covers only systems that support a human assessment already based on objective and verifiable facts directly linked to a criminal activity, so it does not apply here.",
+   "A_refs": [
+    "Article 5.1.d"
+   ],
+   "A_status": 200,
+   "A_place_high_risk": [],
+   "A_verbatim_draft": false,
+   "B": "No, the vendor cannot sell this module in the EU. Article 5(1)(d) prohibits placing on the market, putting into service or using an AI system that assesses or predicts the risk of a natural person committing a criminal offence based solely on profiling or on assessing personality traits and characteristics, and a rating built only on impulsivity, aggression and empathy scores falls squarely within that ban. The only carve-out covers systems that support a human assessment already based on objective and verifiable facts directly linked to a criminal activity. That carve-out does not apply here, because the rating alone decides who goes on the watch list, and only a crime-risk tool that met the carve-out would instead be high-risk under the Annex III(6) law-enforcement use cases.",
+   "B_refs": [
+    "Article 5.1.d",
+    "Annex III.6.d"
+   ],
+   "B_status": 200,
+   "B_place_high_risk": [],
+   "B_verbatim_draft": false,
+   "differs": true,
+   "correctness": {
+    "verdict": "tie",
+    "agreed": false
+   }
+  },
+  {
+   "set": "heldout",
+   "id": "C08",
+   "kind": "control",
+   "question": "Can police use predictive policing software that labels someone a likely future offender purely because of their personality traits?",
+   "A": "No. Article 5(1)(d) prohibits placing on the market, putting into service for this specific purpose, or using an AI system that assesses or predicts the risk of a natural person committing a criminal offence based solely on profiling or on assessing their personality traits and characteristics. Software that labels someone a likely future offender purely because of their personality traits is therefore a prohibited practice, and it does not matter whether a police authority or anyone else uses it. Article 5(1)(d) has one narrow carve-out. It does not apply to AI systems that support a human assessment of a person's involvement in a criminal activity, where that assessment is already based on objective and verifiable facts directly linked to a criminal activity. A risk-assessment tool used by or on behalf of law enforcement authorities that does not rely solely on profiling is not prohibited. It is instead high-risk under Annex III(6)(d), which covers assessing the risk of a natural person offending or re-offending, or assessing personality traits and characteristics or past criminal behaviour.",
+   "A_refs": [
+    "Article 5.1.d",
+    "Annex III.6.d"
+   ],
+   "A_status": 200,
+   "A_place_high_risk": [],
+   "A_verbatim_draft": false,
+   "B": "No. Article 5(1)(d) prohibits placing on the market, putting into service or using an AI system that assesses or predicts the risk of a natural person committing a criminal offence based solely on profiling or on assessing their personality traits and characteristics. Software that labels someone a likely future offender purely because of their personality traits falls squarely within this prohibition. The ban has one narrow exception. It does not cover AI systems used to support a human assessment of a person's involvement in a criminal activity, where that assessment is already based on objective and verifiable facts directly linked to a criminal activity. Outside the prohibition, a law-enforcement risk-assessment tool for offending or re-offending that does not rely solely on profiling is high-risk under Annex III(6)(d). In that case it is lawful only where permitted under relevant Union or national law and subject to the full high-risk regime.",
+   "B_refs": [
+    "Article 5.1.d",
+    "Annex III.6.d"
+   ],
+   "B_status": 200,
+   "B_place_high_risk": [],
+   "B_verbatim_draft": false,
+   "differs": true,
+   "correctness": {
+    "verdict": "A",
+    "agreed": true
+   }
+  },
+  {
+   "set": "dev",
+   "id": "P_pp2",
+   "kind": "control",
+   "question": "Is predictive policing prohibited under the AI Act?",
+   "A": "No, not in every case. Article 5(1)(d) prohibits only AI systems that assess or predict the risk of a natural person committing a criminal offence based solely on profiling or on assessing their personality traits and characteristics. That prohibition does not apply where the system supports a human assessment of a person's involvement in criminal activity that is already based on objective and verifiable facts directly linked to that activity. Other individual risk assessment used by or on behalf of law enforcement authorities is not prohibited but high-risk under Annex III(6)(d), which covers assessing the risk of a natural person offending or re-offending.",
+   "A_refs": [
+    "Article 5",
+    "Annex III.6.d"
+   ],
+   "A_status": 200,
+   "A_place_high_risk": [],
+   "A_verbatim_draft": false,
+   "B": "No, not in every case. Article 5(1)(d) prohibits AI systems that assess or predict the risk of a natural person committing a criminal offence based solely on profiling or on assessing their personality traits and characteristics. The ban does not apply to AI systems that support a human assessment of a person's involvement in a criminal activity that already rests on objective and verifiable facts directly linked to that activity. Other predictive policing is high-risk, not prohibited: Annex III(6)(d) covers systems used by or on behalf of law enforcement authorities to assess a natural person's risk of offending or re-offending where the assessment is not based solely on profiling.",
+   "B_refs": [
+    "Article 5",
+    "Annex III.6.d"
+   ],
+   "B_status": 200,
+   "B_place_high_risk": [],
+   "B_verbatim_draft": false,
+   "differs": true,
+   "correctness": {
+    "verdict": "tie",
+    "agreed": false
+   }
+  },
+  {
+   "set": "dev",
+   "id": "P_pp3",
+   "kind": "control",
+   "question": "Is predictive policing prohibited?",
+   "A": "Not always: predictive policing is prohibited only where Article 5(1)(d) applies, which bans AI systems that assess or predict the risk of a natural person committing a criminal offence based solely on profiling or on assessing their personality traits and characteristics. That ban does not apply to AI systems that support a human assessment of a person's involvement in criminal activity where that assessment is already based on objective and verifiable facts directly linked to the activity. Predictive policing outside the ban, such as crime forecasting based on places rather than individuals, is not prohibited. Individual risk assessment used by or on behalf of law enforcement authorities that does not rest solely on profiling is high-risk under Annex III(6)(d).",
+   "A_refs": [
+    "Article 5",
+    "Annex III.6.d"
+   ],
+   "A_status": 200,
+   "A_place_high_risk": [],
+   "A_verbatim_draft": false,
+   "B": "No, not in every case. Article 5(1)(d) prohibits only AI systems that assess or predict the risk of a natural person committing a criminal offence based solely on profiling or on assessing their personality traits and characteristics. That ban does not cover systems that support a human assessment of a person's involvement in a criminal activity when that assessment already rests on objective and verifiable facts directly linked to the activity. Predictive policing outside the ban is high-risk under Annex III(6)(d) where it is used by or on behalf of law enforcement authorities to assess a person's risk of offending or re-offending, so it must meet the high-risk requirements rather than being banned.",
+   "B_refs": [
+    "Article 5",
+    "Annex III.6.d"
+   ],
+   "B_status": 200,
+   "B_place_high_risk": [],
+   "B_verbatim_draft": false,
+   "differs": true,
+   "correctness": {
+    "verdict": "tie",
+    "agreed": false
+   }
+  }
+ ],
+ "judge_model": "claude-sonnet-5",
+ "judge_failed": 0
+}

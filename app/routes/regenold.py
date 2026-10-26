@@ -1459,10 +1459,18 @@ def _engine_cache_key(
             # answer cites exactly its declared references.
             "REGENOLD_CURATED_FULL_TEXT",
             "REGENOLD_STATUTORY_REFS_PINNED",
+            # R468 — a colon-introduced list stays one sentence, and a meta-leak
+            # phrase matches only at a word start ("paragraph" is not "graph").
+            "REGENOLD_LIST_INLINE",
+            "REGENOLD_META_LEAK_WORD_START",
             # R453 — a curated answer backs an Annex I point only by naming its Act.
             "REGENOLD_CURATED_ANNEX_I_ACT_BACKING",
             # R454 — Annex I points are chosen by the Act the question describes.
             "REGENOLD_GRAIN_ANNEX_I_ACT_SUBJECT",
+            # R469 — the statutory verdicts catch the review's rephrasings.
+            "REGENOLD_STATUTORY_REPHRASINGS",
+            # R470 — Article 5(1)(d) is not matched on place-based crime forecasting.
+            "REGENOLD_PLACE_BASED_POLICING",
             # R454 — the ACT TERMS clause on the Stage-2 user message.
             "REGENOLD_ACT_TERMS_CLAUSE",
             # R456 — the PROVISIONS TO NAME clause on the Stage-2 user channel.
