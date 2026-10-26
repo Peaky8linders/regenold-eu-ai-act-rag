@@ -1,0 +1,323 @@
+{
+ "rows": [
+  {
+   "set": "heldout",
+   "id": "T01",
+   "kind": "target",
+   "question": "I heard predictive policing is now banned under the AI Act. Does that include tools that only forecast crime hotspots?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [],
+   "changed": true
+  },
+  {
+   "set": "heldout",
+   "id": "T02",
+   "kind": "target",
+   "question": "Can a police force use AI to forecast which streets will see the most burglaries next month?",
+   "scan_A": [],
+   "scan_B": [],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "T03",
+   "kind": "target",
+   "question": "Our city council is buying a predictive policing tool from a vendor. It looks at ten years of recorded incidents, the weather and the events calendar, and produces a weekly heat map of the neighbourhoods where street robberies are most likely. Does the AI Act treat it as a high-risk system?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [],
+   "changed": true
+  },
+  {
+   "set": "heldout",
+   "id": "T04",
+   "kind": "target",
+   "question": "A metro operator wants a model trained on past pickpocketing reports, station footfall counts and timetables to predict which stations and time slots will see the most thefts. It will use the forecast to schedule its security staff. What does the EU AI Act require of the operator?",
+   "scan_A": [],
+   "scan_B": [],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "T05",
+   "kind": "target",
+   "question": "We are a start-up building predictive policing software. The model never touches data about individuals: it divides a city into 250-metre grid cells and estimates the likelihood of vehicle crime in each cell for every eight-hour shift. Can we still sell it in the EU now that the AI Act's prohibitions apply?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [
+    "Art. 5.1.d"
+   ],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "T06",
+   "kind": "target",
+   "question": "Quick check: would a model that predicts the hours when bar fights are most likely in the old town count as a prohibited AI practice?",
+   "scan_A": [],
+   "scan_B": [],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "T07",
+   "kind": "target",
+   "question": "A regional police force runs a predictive policing system that flags the twenty street segments most at risk of knife crime each weekend, using only historical incident data and the time of day. Officers are then sent to patrol those segments. Does Article 5(1)(d) prohibit this?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [
+    "Art. 5.1.d"
+   ],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "T08",
+   "kind": "target",
+   "question": "A municipality uses software that produces a burglary risk assessment for each district for the next fortnight, based on past burglary reports and the season. Could the EU tighten the rules on this kind of tool later on?",
+   "scan_A": [],
+   "scan_B": [],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "T09",
+   "kind": "target",
+   "question": "Could hotspot-style predictive policing be added to the AI Act's banned or high-risk lists in the future?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [],
+   "changed": true
+  },
+  {
+   "set": "heldout",
+   "id": "T10",
+   "kind": "target",
+   "question": "Ahead of the summer festival season, the city council wants an AI system that predicts which squares and evenings carry the highest risk of drug dealing, based on where and when drugs were seized in previous years. The forecast will be shared with residents' associations so they know when extra officers will be around. Is the council allowed to do this under the AI Act?",
+   "scan_A": [],
+   "scan_B": [],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "T11",
+   "kind": "target",
+   "question": "Is location-based predictive policing listed as high-risk in Annex III?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [],
+   "changed": true
+  },
+  {
+   "set": "heldout",
+   "id": "T12",
+   "kind": "target",
+   "question": "A software vendor sells police forces a dashboard that predicts, for every hour of the coming week, how many car thefts to expect in each postcode area. No personal data goes into the model. What obligations does the AI Act place on the vendor and on the forces that use it?",
+   "scan_A": [],
+   "scan_B": [],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "C01",
+   "kind": "control",
+   "question": "Is predictive policing that scores individuals on their likelihood of committing a crime, based only on profiling, banned under the AI Act?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [
+    "Art. 5.1.d"
+   ],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "C02",
+   "kind": "control",
+   "question": "A police force's predictive policing platform maps burglary hotspots. For each hotspot it also lists the people who live there and gives each of them a 'likely offender' score, worked out only by profiling them on age, employment status, household composition and how often they have moved house. Is that second feature allowed under the AI Act?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [
+    "Art. 5.1.d"
+   ],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "C03",
+   "kind": "control",
+   "question": "A city's municipal police want software that ranks everyone registered as living on a particular street by how likely they are to commit an offence, using nothing but their age, nationality and previous addresses. None of them is suspected of any particular offence. Is this permitted under Regulation (EU) 2024/1689?",
+   "scan_A": [],
+   "scan_B": [],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "C04",
+   "kind": "control",
+   "question": "A vendor offers police forces a predictive policing module that gives young people a 'future violent offender' rating based only on a personality questionnaire measuring impulsivity, aggression and empathy. The rating alone decides who is put on a watch list. Can the vendor sell this in the EU?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [
+    "Art. 5.1.d"
+   ],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "C05",
+   "kind": "control",
+   "question": "May the police use an algorithm that predicts whether a person will commit a burglary from nothing more than their age, sex, nationality and family situation?",
+   "scan_A": [],
+   "scan_B": [],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "C06",
+   "kind": "control",
+   "question": "At the rail stations with the highest theft rates, the transport police want a system that predicts which passengers holding registered travel cards are likely to steal, based solely on profiling each card holder's age, home postcode and travel history. Would this be prohibited?",
+   "scan_A": [],
+   "scan_B": [],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "C07",
+   "kind": "control",
+   "question": "Under a new predictive policing pilot, the police would take the three neighbourhoods with the highest recorded crime and give every resident aged 14 to 25 a probability of committing violent offences, purely by profiling their school attendance, family background and social media activity. None of them is linked to any investigation. Is the pilot compatible with Article 5 of the AI Act?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [
+    "Art. 5.1.d"
+   ],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "C08",
+   "kind": "control",
+   "question": "Can police use predictive policing software that labels someone a likely future offender purely because of their personality traits?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [
+    "Art. 5.1.d"
+   ],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "C09",
+   "kind": "control",
+   "question": "A company sells a 'safer streets' package to police forces and city councils. Besides a heat map of crime by district, it produces a list of named residents of the red districts flagged as 'likely to offend', solely by profiling them on country of birth, income band and number of children. Is that list a prohibited practice even if the heat map is not?",
+   "scan_A": [],
+   "scan_B": [],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "C10",
+   "kind": "control",
+   "question": "We are a police force planning an AI system that gives every adult in our area a risk score for committing a drug offence, based only on profiling of their personal data such as employment, debts and social contacts. Officers would then run checks on the top five per cent. We assume this is high-risk under Annex III point 6; which requirements would we have to meet?",
+   "scan_A": [],
+   "scan_B": [],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "C11",
+   "kind": "control",
+   "question": "Is it lawful to score the people who live in a high-crime area as likely offenders based purely on their personal characteristics?",
+   "scan_A": [],
+   "scan_B": [],
+   "changed": false
+  },
+  {
+   "set": "heldout",
+   "id": "C12",
+   "kind": "control",
+   "question": "A predictive policing vendor markets its tool as 'place-based' because it starts from a map of high-burglary streets. In practice it then gives each person who often visits those streets a burglary risk score derived only from profiling their phone location history, age and previous addresses. Would Article 5(1)(d) apply?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [
+    "Art. 5.1.d"
+   ],
+   "changed": false
+  },
+  {
+   "set": "dev",
+   "id": "N17_t2",
+   "kind": "target",
+   "question": "If place-based predictive policing tools (forecasting where crime will happen rather than who will commit it) prove harmful, could the Commission bring them into Annex III by delegated act, and what has to happen before such an act takes effect?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [],
+   "changed": true
+  },
+  {
+   "set": "dev",
+   "id": "P_pp1",
+   "kind": "control",
+   "question": "Can predictive policing tools rely on the Article 6(3) exemption?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [
+    "Art. 5.1.d"
+   ],
+   "changed": false
+  },
+  {
+   "set": "dev",
+   "id": "P_pp2",
+   "kind": "control",
+   "question": "Is predictive policing prohibited under the AI Act?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [
+    "Art. 5.1.d"
+   ],
+   "changed": false
+  },
+  {
+   "set": "dev",
+   "id": "P_pp3",
+   "kind": "control",
+   "question": "Is predictive policing prohibited?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [
+    "Art. 5.1.d"
+   ],
+   "changed": false
+  },
+  {
+   "set": "dev",
+   "id": "P_pp4",
+   "kind": "control",
+   "question": "What's the Recital 16 carve-out for predictive policing?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [
+    "Art. 5.1.d"
+   ],
+   "changed": false
+  }
+ ]
+}
