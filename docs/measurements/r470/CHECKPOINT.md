@@ -93,7 +93,8 @@ correct denial (`test_a_correct_denial_survives_on_a_place_based_question`).
   assess natural persons (points (a), (d) and (e)), polygraphs (b) and the reliability of
   evidence (c). None describes forecasting where or when crime will occur, so the
   place-based half of that sentence has no basis in the annex. The text ships on every
-  question that names predictive policing and asks whether it is prohibited.
+  question that names predictive policing and asks whether it is prohibited. Fixed in
+  R471 (`docs/measurements/r471/CHECKPOINT.md`).
 * **T05 and T07** (above): areas named as "grid cells" or "street segments".
 * **The person cues miss C03's phrasing** (above), a latent false exclusion if such a
   question also names predictive policing.

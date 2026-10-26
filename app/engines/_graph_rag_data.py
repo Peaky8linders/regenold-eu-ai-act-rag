@@ -1148,12 +1148,23 @@ _CLASSIFICATION_TOPICS: list[dict] = [
                 re.IGNORECASE,
             ),
         ],
+        # R471 — this said "Place-based or non-profiling predictive policing
+        # remains permitted, but is high-risk under Annex III". Annex III point 6
+        # lists only systems that assess natural persons, polygraphs and the
+        # reliability of evidence, so the high-risk case is point 6(d)'s
+        # person-level risk assessment, and forecasting places is neither banned
+        # (recital 42) nor listed. Statutory phrases verbatim from Article
+        # 5(1)(d) and Annex III point 6(d); every sentence carries an anchor.
         "answer": (
-            "Predictive policing is prohibited under Article 5 when it assesses or "
-            "predicts criminal-offence risk based solely on profiling of a natural "
-            "person or their personality traits. Place-based or non-profiling predictive "
-            "policing remains permitted, but is high-risk under Annex III and subject to "
-            "Chapter III Section 2 obligations."
+            "Predictive policing is prohibited under Article 5(1)(d) when it assesses or "
+            "predicts the risk of a natural person committing a criminal offence based "
+            "solely on profiling or on assessing their personality traits and "
+            "characteristics. Assessing a natural person's risk of offending or "
+            "re-offending not solely on the basis of profiling is high-risk under Annex "
+            "III point 6(d) and subject to the Chapter III, Section 2 requirements. A tool "
+            "that forecasts where or when crime will occur, without assessing natural "
+            "persons, falls outside Article 5(1)(d) (recital 42) and is not among the "
+            "law-enforcement uses listed in Annex III point 6."
         ),
         "refs": ["Art. 5", "Annex III"],
     },
