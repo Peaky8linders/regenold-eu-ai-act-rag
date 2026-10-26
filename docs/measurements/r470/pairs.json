@@ -1,0 +1,147 @@
+{
+ "rows": [
+  {
+   "set": "heldout",
+   "id": "T01",
+   "kind": "target",
+   "question": "I heard predictive policing is now banned under the AI Act. Does that include tools that only forecast crime hotspots?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [],
+   "changed": true,
+   "A": "No. Article 5(1)(d) prohibits only AI risk assessments that predict whether an individual natural person will commit a criminal offence, based solely on profiling or on assessing personality traits and characteristics. It does not cover systems that support a human assessment grounded in objective, verifiable facts linked to criminal activity. A tool that forecasts crime by location or time, without assessing individuals, falls outside that ban. It is also not one of the law enforcement use cases listed under Annex III(6). Those use cases are high-risk only where a system is used by or on behalf of law enforcement authorities to assess natural persons, for example the risk that a person will offend or re-offend under Annex III(6)(d), or to profile natural persons.",
+   "A_refs": [
+    "Article 5",
+    "Annex III.6.b"
+   ],
+   "A_status": 200,
+   "A_fresh_calls": 3,
+   "B": "No. Article 5(1)(d) prohibits only AI risk assessments that predict whether an individual natural person will commit a criminal offence, based solely on profiling or on assessing personality traits and characteristics. It does not cover systems that support a human assessment grounded in objective, verifiable facts linked to criminal activity. A tool that forecasts crime by location or time, without assessing individuals, falls outside that ban. It is also not one of the law enforcement use cases listed under Annex III(6). Those use cases are high-risk only where a system is used by or on behalf of law enforcement authorities to assess natural persons, for example the risk that a person will offend or re-offend under Annex III(6)(d), or to profile natural persons.",
+   "B_refs": [
+    "Article 5",
+    "Annex III.6.b"
+   ],
+   "B_status": 200,
+   "B_fresh_calls": 0,
+   "paired_generation": true,
+   "differs": false
+  },
+  {
+   "set": "heldout",
+   "id": "T03",
+   "kind": "target",
+   "question": "Our city council is buying a predictive policing tool from a vendor. It looks at ten years of recorded incidents, the weather and the events calendar, and produces a weekly heat map of the neighbourhoods where street robberies are most likely. Does the AI Act treat it as a high-risk system?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [],
+   "changed": true,
+   "A": "No. As described, the tool is not high-risk under Annex III(6). The law-enforcement uses listed there all assess natural persons, for example under Annex III(6)(d): the risk of a natural person offending or re-offending, or the personality traits, characteristics or past criminal behaviour of persons or groups. A weekly heat map that forecasts street robberies by neighbourhood from incident history, weather and events data assesses places, not people. For the same reason, Article 5(1)(d) does not apply, because it prohibits only risk assessments that predict whether a natural person will commit a criminal offence based solely on profiling or personality traits. The tool would become high-risk, or even prohibited, if it began scoring or profiling identifiable persons or groups.",
+   "A_refs": [
+    "Annex III.6.d",
+    "Article 5.1.d"
+   ],
+   "A_status": 200,
+   "A_fresh_calls": 2,
+   "B": "No. As described, the tool is not high-risk under Annex III(6). The law-enforcement uses listed there all assess natural persons, for example under Annex III(6)(d): the risk of a natural person offending or re-offending, or the personality traits, characteristics or past criminal behaviour of persons or groups. A weekly heat map that forecasts street robberies by neighbourhood from incident history, weather and events data assesses places, not people. For the same reason, Article 5(1)(d) does not apply, because it prohibits only risk assessments that predict whether a natural person will commit a criminal offence based solely on profiling or personality traits. The tool would become high-risk, or even prohibited, if it began scoring or profiling identifiable persons or groups.",
+   "B_refs": [
+    "Annex III.6.d",
+    "Article 5.1.d"
+   ],
+   "B_status": 200,
+   "B_fresh_calls": 0,
+   "paired_generation": true,
+   "differs": false
+  },
+  {
+   "set": "heldout",
+   "id": "T09",
+   "kind": "target",
+   "question": "Could hotspot-style predictive policing be added to the AI Act's banned or high-risk lists in the future?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [],
+   "changed": true,
+   "A": "Yes, in principle. Hotspot-style predictive policing that forecasts crime locations is currently not prohibited, and it is not expressly listed as high-risk. Article 5(1)(d) bans only risk assessments of natural persons that predict whether a person will commit a criminal offence based solely on profiling or on their personality traits and characteristics, so a system that predicts places without assessing individuals falls outside it. The Regulation requires the Commission to review regularly whether the prohibited practices and the high-risk use-case list should change, and it can add use cases within the existing law enforcement area by delegated act. Adding a new prohibition would instead require amending the Regulation itself through the ordinary legislative procedure.",
+   "A_refs": [
+    "Article 5"
+   ],
+   "A_status": 200,
+   "A_fresh_calls": 1,
+   "B": "Yes, in principle. Hotspot-style predictive policing that forecasts crime locations is currently not prohibited, and it is not expressly listed as high-risk. Article 5(1)(d) bans only risk assessments of natural persons that predict whether a person will commit a criminal offence based solely on profiling or on their personality traits and characteristics, so a system that predicts places without assessing individuals falls outside it. The Regulation requires the Commission to review regularly whether the prohibited practices and the high-risk use-case list should change, and it can add use cases within the existing law enforcement area by delegated act. Adding a new prohibition would instead require amending the Regulation itself through the ordinary legislative procedure.",
+   "B_refs": [
+    "Article 5"
+   ],
+   "B_status": 200,
+   "B_fresh_calls": 0,
+   "paired_generation": true,
+   "differs": false
+  },
+  {
+   "set": "heldout",
+   "id": "T11",
+   "kind": "target",
+   "question": "Is location-based predictive policing listed as high-risk in Annex III?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [],
+   "changed": true,
+   "A": "No, location-based predictive policing is not listed in Annex III. Annex III(6) lists law-enforcement uses aimed at natural persons, such as assessing the risk of a natural person offending or re-offending, so crime forecasting that only targets locations and assesses no individual is not a listed use. Article 5(1)(d) bans only risk assessments of natural persons based solely on profiling or personality traits, so place-based prediction is neither prohibited nor high-risk.",
+   "A_refs": [
+    "Annex III.6.d",
+    "Article 5.1.d"
+   ],
+   "A_status": 200,
+   "A_fresh_calls": 1,
+   "B": "No, location-based predictive policing is not listed in Annex III. Annex III(6) lists law-enforcement uses aimed at natural persons, such as assessing the risk of a natural person offending or re-offending, so crime forecasting that only targets locations and assesses no individual is not a listed use. Article 5(1)(d) bans only risk assessments of natural persons based solely on profiling or personality traits, so place-based prediction is neither prohibited nor high-risk.",
+   "B_refs": [
+    "Annex III.6.d",
+    "Article 5.1.d"
+   ],
+   "B_status": 200,
+   "B_fresh_calls": 0,
+   "paired_generation": true,
+   "differs": false
+  },
+  {
+   "set": "dev",
+   "id": "N17_t2",
+   "kind": "target",
+   "question": "If place-based predictive policing tools (forecasting where crime will happen rather than who will commit it) prove harmful, could the Commission bring them into Annex III by delegated act, and what has to happen before such an act takes effect?",
+   "scan_A": [
+    "Art. 5.1.d"
+   ],
+   "scan_B": [],
+   "changed": true,
+   "A": "Risk assessment of natural persons based solely on profiling or personality traits is prohibited under Article 5(1)(d). Yes, but only within the limits Article 7 sets. Under Article 7(1) the Commission may adopt delegated acts in accordance with Article 97 to amend Annex III by adding or modifying use cases of high-risk AI systems where both of the following conditions are fulfilled: the AI systems are intended to be used in any of the areas already listed in Annex III, and they pose a risk of harm to health and safety, or an adverse impact on fundamental rights, that is equivalent to or greater than the risk of harm or adverse impact posed by the high-risk AI systems already referred to in Annex III. Both conditions are cumulative, so a use case outside the existing areas cannot be added by delegated act; Article 7(2) lists the criteria for assessing that risk, and Article 7(3) allows a use case to be removed from Annex III where it no longer poses a significant risk and the overall level of protection is not reduced. Before adopting the delegated act the Commission must consult experts designated by each Member State (Article 97(4)), and the act enters into force only if neither the European Parliament nor the Council objects within three months of notification, a period extended by three months at the initiative of either of them, or earlier where both inform the Commission that they will not object (Article 97(6)).",
+   "A_refs": [
+    "Article 7.1",
+    "Article 97.6",
+    "Annex III"
+   ],
+   "A_status": 200,
+   "A_fresh_calls": 0,
+   "B": "Yes, but only within the limits Article 7 sets. Under Article 7(1) the Commission may adopt delegated acts in accordance with Article 97 to amend Annex III by adding or modifying use cases of high-risk AI systems where both of the following conditions are fulfilled: the AI systems are intended to be used in any of the areas already listed in Annex III, and they pose a risk of harm to health and safety, or an adverse impact on fundamental rights, that is equivalent to or greater than the risk of harm or adverse impact posed by the high-risk AI systems already referred to in Annex III. Both conditions are cumulative, so a use case outside the existing areas cannot be added by delegated act; Article 7(2) lists the criteria for assessing that risk, and Article 7(3) allows a use case to be removed from Annex III where it no longer poses a significant risk and the overall level of protection is not reduced. Before adopting the delegated act the Commission must consult experts designated by each Member State (Article 97(4)), and the act enters into force only if neither the European Parliament nor the Council objects within three months of notification, a period extended by three months at the initiative of either of them, or earlier where both inform the Commission that they will not object (Article 97(6)).",
+   "B_refs": [
+    "Article 7.1",
+    "Article 97.6",
+    "Annex III"
+   ],
+   "B_status": 200,
+   "B_fresh_calls": 0,
+   "paired_generation": true,
+   "differs": true,
+   "correctness": {
+    "verdict": "B",
+    "agreed": true
+   }
+  }
+ ],
+ "provider_calls": 7,
+ "memo_hits": 6,
+ "judge_model": "claude-sonnet-5",
+ "judge_failed": 0
+}
