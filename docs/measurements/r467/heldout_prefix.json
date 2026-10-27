@@ -10,7 +10,8 @@
    "references": [
     "Article 13.3"
    ],
-   "latency_s": 22.63
+   "latency_s": 22.63,
+   "offline_identical": false
   },
   {
    "id": "H45_b",
@@ -20,7 +21,8 @@
    "references": [
     "Article 13.3.f"
    ],
-   "latency_s": 24.99
+   "latency_s": 24.99,
+   "offline_identical": false
   },
   {
    "id": "H96_a",
@@ -31,7 +33,8 @@
     "Annex III",
     "Article 6.1"
    ],
-   "latency_s": 22.22
+   "latency_s": 22.22,
+   "offline_identical": false
   },
   {
    "id": "H96_b",
@@ -41,7 +44,8 @@
    "references": [
     "Annex III.5.a"
    ],
-   "latency_s": 0.79
+   "latency_s": 0.79,
+   "offline_identical": true
   },
   {
    "id": "H17_a",
@@ -53,7 +57,8 @@
     "Article 97",
     "Annex III"
    ],
-   "latency_s": 0.79
+   "latency_s": 0.79,
+   "offline_identical": true
   },
   {
    "id": "H17_b",
@@ -64,7 +69,8 @@
     "Article 7",
     "Article 97"
    ],
-   "latency_s": 20.95
+   "latency_s": 20.95,
+   "offline_identical": false
   },
   {
    "id": "H74_a",
@@ -74,7 +80,8 @@
    "references": [
     "Article 50"
    ],
-   "latency_s": 23.27
+   "latency_s": 23.27,
+   "offline_identical": false
   },
   {
    "id": "H74_b",
@@ -88,7 +95,8 @@
     "Article 3.60",
     "Article 3.4"
    ],
-   "latency_s": 7.39
+   "latency_s": 7.39,
+   "offline_identical": true
   },
   {
    "id": "H95_a",
@@ -99,7 +107,8 @@
     "Article 6.2",
     "Annex III"
    ],
-   "latency_s": 0.76
+   "latency_s": 0.76,
+   "offline_identical": true
   },
   {
    "id": "H95_b",
@@ -110,7 +119,8 @@
     "Annex III",
     "Article 6.2"
    ],
-   "latency_s": 18.05
+   "latency_s": 18.05,
+   "offline_identical": false
   },
   {
    "id": "H104_a",
@@ -122,7 +132,8 @@
     "Annex III",
     "Article 111.1"
    ],
-   "latency_s": 24.72
+   "latency_s": 24.72,
+   "offline_identical": false
   },
   {
    "id": "H104_b",
@@ -134,7 +145,8 @@
     "Article 2",
     "Annex X.1"
    ],
-   "latency_s": 17.72
+   "latency_s": 17.72,
+   "offline_identical": false
   },
   {
    "id": "H6_a",
@@ -148,7 +160,8 @@
     "Article 50",
     "Article 95"
    ],
-   "latency_s": 1.71
+   "latency_s": 1.71,
+   "offline_identical": true
   },
   {
    "id": "H6_b",
@@ -160,7 +173,8 @@
     "Article 4",
     "Article 95"
    ],
-   "latency_s": 18.82
+   "latency_s": 18.82,
+   "offline_identical": false
   },
   {
    "id": "H10_a",
@@ -170,7 +184,8 @@
    "references": [
     "Article 3"
    ],
-   "latency_s": 11.81
+   "latency_s": 11.81,
+   "offline_identical": false
   },
   {
    "id": "H10_b",
@@ -182,7 +197,8 @@
     "Article 16",
     "Annex III.4.a"
    ],
-   "latency_s": 29.82
+   "latency_s": 29.82,
+   "offline_identical": false
   },
   {
    "id": "H16_a",
@@ -194,7 +210,8 @@
     "Annex III.1.c",
     "Article 5"
    ],
-   "latency_s": 20.49
+   "latency_s": 20.49,
+   "offline_identical": false
   },
   {
    "id": "H16_b",
@@ -204,7 +221,8 @@
    "references": [
     "Article 5.1.f"
    ],
-   "latency_s": 15.59
+   "latency_s": 15.59,
+   "offline_identical": false
   },
   {
    "id": "HD_a",
@@ -215,7 +233,8 @@
     "Article 6.1",
     "Annex I.20"
    ],
-   "latency_s": 19.38
+   "latency_s": 19.38,
+   "offline_identical": false
   },
   {
    "id": "HD_b",
@@ -227,7 +246,8 @@
     "Annex I.11",
     "Annex VIII"
    ],
-   "latency_s": 26.79
+   "latency_s": 26.79,
+   "offline_identical": false
   }
  ],
  "finished_utc": "2026-10-23T13:55:22+00:00"

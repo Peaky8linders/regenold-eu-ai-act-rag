@@ -6,7 +6,9 @@ deterministic composition. If a production answer is byte-identical to this
 one, the production text did not come from an LLM.
 
 Usage (repo root):
-    .venv/Scripts/python.exe docs/measurements/r467/offline_wire_replay.py PRODUCTION_JSON
+    .venv/Scripts/python.exe docs/measurements/r467/offline_wire_replay.py PRODUCTION_JSON [OUT_JSON]
+
+OUT_JSON defaults to ``offline_wire_replay.json`` beside PRODUCTION_JSON.
 """
 from __future__ import annotations
 
@@ -46,7 +48,8 @@ def main() -> int:
                     "offline_references": body.get("references")})
         print(f"{row['id']}: status={resp.status_code} answer_identical={same_answer} "
               f"refs_identical={same_refs}", flush=True)
-    target = Path(sys.argv[1]).with_name("offline_wire_replay.json")
+    target = (Path(sys.argv[2]) if len(sys.argv) > 2
+              else Path(sys.argv[1]).with_name("offline_wire_replay.json"))
     target.write_text(json.dumps(out, indent=1), encoding="utf-8")
     print(f"wrote {target}")
     return 0

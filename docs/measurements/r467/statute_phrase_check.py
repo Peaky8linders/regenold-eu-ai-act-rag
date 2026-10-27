@@ -9,11 +9,14 @@ if any phrase is missing.
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3] / "tmp" / "legal-audit-2026-09-29"
+#: The legal texts are not tracked; a worktree points at the main checkout's with the variable.
+ROOT = Path(os.environ.get("REGENOLD_LEGAL_TEXT_DIR")
+            or Path(__file__).resolve().parents[3] / "tmp" / "legal-audit-2026-09-29")
 
 
 def norm(text: str) -> str:

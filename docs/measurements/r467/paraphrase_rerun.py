@@ -38,7 +38,7 @@ def _paraphrases() -> list[dict]:
     return [r for r in rows if not r["id"].endswith("_0")]
 
 
-def live() -> int:
+def live(out_path: Path = LIVE_OUT) -> int:
     from dotenv import dotenv_values
 
     key = dotenv_values(REPO / ".env").get("P2P_REGENOLD_API_KEY") or ""
@@ -67,11 +67,11 @@ def live() -> int:
         print(f"{row['id']}: {out.get('latency_s')}s refs={out.get('references')} "
               f"err={out.get('error')}", flush=True)
     run["finished_utc"] = datetime.now(UTC).isoformat(timespec="seconds")
-    LIVE_OUT.write_text(json.dumps(run, indent=1, ensure_ascii=False), encoding="utf-8")
+    out_path.write_text(json.dumps(run, indent=1, ensure_ascii=False), encoding="utf-8")
     return 0
 
 
-def offline() -> int:
+def offline(out_path: Path = LIVE_OUT) -> int:
     os.environ["REGENOLD_SKIP_DOTENV"] = "1"
     os.environ["P2P_GRAPH_RAG_PROVIDER"] = "cli"
     os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:1/v1"
@@ -84,7 +84,7 @@ def offline() -> int:
 
     from app.main import app
 
-    run = json.loads(LIVE_OUT.read_text(encoding="utf-8"))
+    run = json.loads(out_path.read_text(encoding="utf-8"))
     client = TestClient(app)
     for row in run["rows"]:
         resp = client.post("/api/v1/regenold/eu-ai-act/ask",
@@ -93,11 +93,14 @@ def offline() -> int:
         row["offline_identical"] = (body.get("answer") == row.get("answer")
                                     and body.get("references") == row.get("references"))
         print(f"{row['id']}: deterministic={row['offline_identical']}", flush=True)
-    LIVE_OUT.write_text(json.dumps(run, indent=1, ensure_ascii=False), encoding="utf-8")
+    out_path.write_text(json.dumps(run, indent=1, ensure_ascii=False), encoding="utf-8")
     return 0
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--offline", action="store_true")
-    sys.exit(offline() if ap.parse_args().offline else live())
+    ap.add_argument("--out", default=str(LIVE_OUT))
+    args = ap.parse_args()
+    target = Path(args.out)
+    sys.exit(offline(target) if args.offline else live(target))
