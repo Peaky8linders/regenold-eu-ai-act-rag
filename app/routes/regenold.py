@@ -5371,7 +5371,7 @@ def _curated_budget_cut(
         if item not in folded:
             folded.append(item)
     present = {" ".join(str(c).split()) for c in folded}
-    first = _collapse_multi_leaf_clusters([d for d in norm if d in present])
+    first = _collapse_multi_leaf_clusters([d for d in norm if d in present]) if os.getenv("REGENOLD_INTERCEPT_LEAF_COLLAPSE", "1").strip().lower() in ("1", "true", "yes", "on") else [d for d in norm if d in present]
     rest = [c for c in folded if " ".join(str(c).split()) not in declared_set]
     return (first + rest)[:budget]
 
