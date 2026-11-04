@@ -1459,6 +1459,13 @@ def _engine_cache_key(
             # answer cites exactly its declared references.
             "REGENOLD_CURATED_FULL_TEXT",
             "REGENOLD_STATUTORY_REFS_PINNED",
+            # R473/R474 — a curated head declared with 3+ leaves is exempt from the
+            # grain deepener (`Article 65.5` -> `Article 65`), and the R287 leaf
+            # collapse (its call site and the R473 budget-cut collapse) moves the
+            # wire reference list. Both are read on the request path, so a
+            # same-process A/B toggling either must not share a cache entry.
+            "REGENOLD_CURATED_ENUMERATED_HEADS",
+            "REGENOLD_INTERCEPT_LEAF_COLLAPSE",
             # R468 — a colon-introduced list stays one sentence, and a meta-leak
             # phrase matches only at a word start ("paragraph" is not "graph").
             "REGENOLD_LIST_INLINE",
@@ -5151,7 +5158,7 @@ _ARTICLE_3_REF_RE = re.compile(r"^\s*Article\s+3(?:\.(\d+))?(?:\.|$)")
 
 
 @lru_cache(maxsize=1)
-def _article_3_terms() -> dict[int, "re.Pattern[str]"]:
+def _article_3_terms() -> dict[int, re.Pattern[str]]:
     """R456b — point number -> a pattern for the term that point of Article 3 defines,
     read from the official text ("(60) 'deep fake' means ..."). A hyphen and a space
     are interchangeable, a plural counts, and a term never matches inside a longer
@@ -5320,6 +5327,20 @@ def _curated_fold_heads(declared: tuple, answer_text: str) -> set[str]:
 _GRAIN_ENUMERATION_MIN = 3
 
 
+def _curated_enumerated_heads_enabled() -> bool:
+    """R473/R474 — a curated head declared with 3+ leaves stays at head grain.
+
+    R473 shipped this with no off-switch. It cannot lose a head, but a bare head
+    satisfies no sub-point key, so it can only ever cost Ref. Strict against the
+    deepened paragraph it replaces; the operator needs a switch to A/B it and to
+    roll it back without a redeploy of code. Default ON (the behaviour merged in
+    R473), deny-list truthiness so a blank or unexpected value keeps it ON.
+    """
+    return os.getenv("REGENOLD_CURATED_ENUMERATED_HEADS", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
 def _curated_enumerated_heads(declared: tuple) -> set[str]:
     """Curated heads declared alongside >=3 distinct sub-points of the same head.
 
@@ -5342,6 +5363,17 @@ def _curated_enumerated_heads(declared: tuple) -> set[str]:
         if len(subpoints) >= _GRAIN_ENUMERATION_MIN:
             out.add(h)
     return out
+
+
+def _intercept_leaf_collapse_enabled() -> bool:
+    """R287 off-switch, read in ONE place (the R473 budget cut and the R287 call site).
+
+    Allow-list truthiness, exactly as the R287 call site has always parsed it, so
+    the two sites can never disagree about a value such as ``enabled``.
+    """
+    return os.getenv("REGENOLD_INTERCEPT_LEAF_COLLAPSE", "1").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
 
 
 def _curated_budget_cut(
@@ -5371,8 +5403,27 @@ def _curated_budget_cut(
         if item not in folded:
             folded.append(item)
     present = {" ".join(str(c).split()) for c in folded}
-    first = _collapse_multi_leaf_clusters([d for d in norm if d in present]) if os.getenv("REGENOLD_INTERCEPT_LEAF_COLLAPSE", "1").strip().lower() in ("1", "true", "yes", "on") else [d for d in norm if d in present]
+    first = [d for d in norm if d in present]
     rest = [c for c in folded if " ".join(str(c).split()) not in declared_set]
+    if _intercept_leaf_collapse_enabled():
+        # R473 collapsed a multi-leaf cluster BEFORE the cut so that one article's
+        # sub-points cannot evict the other declared articles (the hospital
+        # verdict: ``Article 26`` + 4 leaves filled all 5 slots and the wire was
+        # ``['Article 26.5']``). R474 - but it did so UNCONDITIONALLY, and where
+        # nothing was being evicted it only changed WHICH leaf survives:
+        # ``hardware_techdoc`` (head + 2 leaves, 4 declared refs, budget 5) lost
+        # the question-aware ``Annex IV.1`` to a retrieval-derived ``Annex IV.2``.
+        # So the collapsed order is used only when it keeps MORE declared heads;
+        # a tie keeps the declared order, i.e. the pre-R473 behaviour exactly.
+        collapsed = _collapse_multi_leaf_clusters(first)
+        if collapsed != first:
+            declared_heads = {h for h in map(_ref_head_of, first) if h}
+
+            def _heads_kept(order: list[str]) -> int:
+                return len({h for h in map(_ref_head_of, order[:budget]) if h in declared_heads})
+
+            if _heads_kept(collapsed + rest) > _heads_kept(first + rest):
+                first = collapsed
     return (first + rest)[:budget]
 
 
@@ -14432,11 +14483,7 @@ def regenold_eu_ai_act_ask(
                 _rn_protect("curated_protected_head_dropped")
             except Exception:  # noqa: BLE001 — fail-soft on trace
                 pass
-    if (
-        _is_curated_intercept
-        and os.getenv("REGENOLD_INTERCEPT_LEAF_COLLAPSE", "1").strip().lower()
-        in ("1", "true", "yes", "on")
-    ):
+    if _is_curated_intercept and _intercept_leaf_collapse_enabled():
         _leaf_refs = _collapse_multi_leaf_clusters(references)
         if _leaf_refs != references:
             for _d in set(references) - set(_leaf_refs):
@@ -14876,7 +14923,11 @@ def regenold_eu_ai_act_ask(
                 answer_text,
                 exempt_heads=(
                     (set() if _deepen_collapsed_heads_enabled() else _collapsed_to_heads)
-                    | _curated_enumerated_heads(_curated_declared_refs)
+                    | (
+                        _curated_enumerated_heads(_curated_declared_refs)
+                        if _curated_enumerated_heads_enabled()
+                        else set()
+                    )
                 ),
                 # R452c — a curated answer's declared heads (whose sub-points its
                 # prose does not name) deepen only where the curated answer backs

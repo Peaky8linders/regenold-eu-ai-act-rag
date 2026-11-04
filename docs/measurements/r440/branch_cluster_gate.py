@@ -276,7 +276,7 @@ def _mean_chars(rows: list[dict[str, dict]], ids: list[str]) -> float:
 
 
 def verdict(label: str, samples: int) -> int:
-    from evals.official.paired_ab import AXES, _gold_dropped_head  # noqa: PLC0415
+    from evals.official.paired_ab import AXES, _gold_dropped_head, macro_axis  # noqa: PLC0415
 
     per_sample = {}
     for s in range(samples):
@@ -340,7 +340,7 @@ def verdict(label: str, samples: int) -> int:
     for axis in AXES:
         cells = []
         for s in range(samples):
-            d = per_sample[s]["axes"][axis]
+            d = macro_axis(per_sample[s]["axes"][axis])
             cells.append(f"{d['delta']:>+7.2f} [{d['ci95'][0]:+.1f},{d['ci95'][1]:+.1f}]")
         print(f"{axis:<26}" + "".join(f"{c:>30}" for c in cells))
 
@@ -372,7 +372,7 @@ def verdict(label: str, samples: int) -> int:
                       f"{ {k: v for k, v in sorted(new_drops.items())} }")
     for axis in REFUSE_AXES:
         neg_samples = [s for s in range(samples)
-                       if per_sample[s]["axes"][axis]["delta"] < 0]
+                       if macro_axis(per_sample[s]["axes"][axis])["delta"] < 0]
         if (pool[axis].get("n") and pool[axis]["delta"] < 0) or neg_samples:
             refuse.append(
                 f"{axis} regression: pooled delta {pool[axis]['delta']:+.2f} pp, "
@@ -385,7 +385,7 @@ def verdict(label: str, samples: int) -> int:
                         if pool[a].get("n") and pool[a]["ci95"][0] > 0)
     per_sample_pos = sorted(a for a in SHIP_AXES
                             if sum(1 for s in range(samples)
-                                   if per_sample[s]["axes"][a]["ci95"][0] > 0) >= 2)
+                                   if macro_axis(per_sample[s]["axes"][a])["ci95"][0] > 0) >= 2)
     positive = sorted(set(pooled_pos) & set(per_sample_pos))
 
     per_row(label, samples)

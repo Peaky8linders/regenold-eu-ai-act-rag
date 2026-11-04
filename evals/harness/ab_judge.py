@@ -39,7 +39,7 @@ import math
 import os
 import sys
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -279,6 +279,11 @@ def _capture_arm(
     return out
 
 
+def _capture_failed(ans: ArmAnswer | None) -> bool:
+    """True when an arm produced no usable answer for a row (missing, empty or non-200)."""
+    return ans is None or not (ans.answer or "").strip() or ans.http_status != 200
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Pairwise judge — position-swapped, both orders must agree for a decisive win.
 # ──────────────────────────────────────────────────────────────────────────
@@ -313,7 +318,34 @@ def _judge_one(caller, prompt: str) -> str:
     return _judge_one_ok(caller, prompt)[0]
 
 
-_LAST_PAIRWISE_OUTCOME: str = "tie"
+class PairVerdict(tuple):
+    """``(verdict, agreed)`` 2-tuple that also carries ``.outcome``.
+
+    R474 - R473 returned the third value (``'invalid'`` vs ``'position_disagreement'``)
+    through a module global that callers reset before each call. That is state the
+    caller must remember to clear, it is shared by any two concurrent callers, and
+    a test double that replaces ``_pairwise_verdict_detail`` never sets it. Here the
+    classification travels WITH the value: unpacking and ``==`` against a plain
+    2-tuple are unchanged, so every existing caller and every bare-tuple double
+    keeps working, and a caller that wants the classification asks
+    :func:`pair_outcome`.
+    """
+
+    outcome: str
+
+    def __new__(cls, verdict: str, agreed: bool, outcome: str) -> PairVerdict:
+        self = super().__new__(cls, (verdict, agreed))
+        self.outcome = outcome
+        return self
+
+
+def pair_outcome(res: tuple) -> str:
+    """Outcome label of a ``_pairwise_verdict_detail`` result; tolerant of plain-tuple doubles."""
+    out = getattr(res, "outcome", None)
+    if out:
+        return out
+    verdict, agreed = res
+    return verdict if agreed else "position_disagreement"
 
 
 def _pairwise_verdict_outcome(
@@ -327,7 +359,6 @@ def _pairwise_verdict_outcome(
     """Return ``(verdict, agreed, outcome)`` where ``outcome`` distinguishes
     ``'A' | 'B' | 'tie' | 'position_disagreement' | 'invalid'``.
     """
-    global _LAST_PAIRWISE_OUTCOME
     # Order 1: prompt-A = arm-A, prompt-B = arm-B.
     p1 = pairwise_prompts.render(
         axis, row_dict, answer_a=a.answer, refs_a=a.refs,
@@ -353,7 +384,6 @@ def _pairwise_verdict_outcome(
         outcome = "position_disagreement"
     else:
         outcome = verdict
-    _LAST_PAIRWISE_OUTCOME = outcome
     return verdict, agreed, outcome
 
 
@@ -377,10 +407,10 @@ def _pairwise_verdict_detail(
     decisive win requires BOTH orderings to agree; a position-flip → 'tie'
     (cancels position bias).
     """
-    verdict, agreed, _outcome = _pairwise_verdict_outcome(
+    verdict, agreed, outcome = _pairwise_verdict_outcome(
         row_dict, axis, a, b, caller, summaries
     )
-    return verdict, agreed
+    return PairVerdict(verdict, agreed, outcome)
 
 
 def _pairwise_verdict(
@@ -435,11 +465,19 @@ class AxisResult:
 
     def effective_win_rate_b(self, total_rows: int) -> float | None:
         """Standard Tie-Aware Effective Win Rate (Chatbot Arena / Elo standard):
-        W_eff = (Wins_B + 0.5 * Ties) / Total
+        W_eff = (Wins_B + 0.5 * Ties) / Judged
+
+        R474 - an INVALID pair (the judge errored or returned a malformed winner)
+        is neither a tie nor a half win: nothing was judged. R473 split ``invalids``
+        out of ``ties`` for the report but left the statistic reading
+        ``Ties / Total``, so every invalid pulled the rate toward 0.5 (a 30 % error
+        rate moved a .658 rate to .592). Invalids leave both the ties and the
+        denominator; position disagreements stay ties, as in the swap convention.
         """
-        if total_rows == 0:
+        judged = total_rows - self.invalids
+        if judged <= 0:
             return None
-        return round((self.wins_b + 0.5 * self.ties) / total_rows, 4)
+        return round((self.wins_b + 0.5 * max(0, self.ties - self.invalids)) / judged, 4)
 
     def win_rate_b(self) -> float | None:
         dec = self.wins_a + self.wins_b
@@ -449,7 +487,11 @@ class AxisResult:
         return _sign_test_two_sided(self.wins_b, self.wins_a)
 
     def swap_consistency_rate(self, total_rows: int) -> float | None:
-        return round(self.swap_agreements / total_rows, 4) if total_rows > 0 else None
+        # R474 - position bias is only measurable on pairs that were judged; an
+        # invalid pair is not a position flip (it counted as one, so a 30 % error
+        # rate read as a 57 % consistency for a judge with no position bias).
+        judged = total_rows - self.invalids
+        return round(self.swap_agreements / judged, 4) if judged > 0 else None
 
     def verdict(self) -> str:
         wr = self.win_rate_b()
@@ -467,42 +509,73 @@ class AxisResult:
         return "even"
 
 
+#: R474 - the same smoke-run floor as ``easyhard_ab._MIN_GATE_N`` (R398). It rejects
+#: tiny runs; like that constant it buys HONESTY, not power.
+_MIN_GATE_N = 30
+#: A two-sided exact sign test cannot reach p < 0.05 on fewer than 6 decisive pairs
+#: (5-0 gives p = 0.0625), so a PASS on fewer is vacuous: the test was not capable
+#: of failing. Identical arms, a judge that always answers slot A, and an all-ties
+#: run all land here.
+_MIN_DECISIVE = 6
+#: An arm that failed to answer (empty body or a non-200) on more than this share
+#: of the rows is a void run: the judge scored an empty answer, which LOSES.
+_MAX_CAPTURE_FAILURE_RATE = 0.10
+
+
 def gate_exit_code(
     result: dict[str, Any],
     *,
-    min_rows: int = 1,
+    min_rows: int = _MIN_GATE_N,
     max_invalid_rate: float = 0.2,
+    min_decisive: int = _MIN_DECISIVE,
+    max_capture_failure_rate: float = _MAX_CAPTURE_FAILURE_RATE,
 ) -> int:
     """Explicit 3-state gate exit code for pairwise A/B results.
 
-    Returns:
-      - ``0`` (PASS): live pairwise tier ran with ``n_rows >= min_rows``,
-        invalid rate within ``max_invalid_rate``, and baseline does not win
-        significantly on ``correctness`` or ``overall``.
-      - ``1`` (FAIL): baseline wins significantly (``BASELINE wins (sig)``) on
-        ``correctness`` or ``overall``.
-      - ``2`` (INDETERMINATE): deterministic fallback tier, insufficient rows,
-        missing axes, or invalid judge rate exceeding ``max_invalid_rate``.
+    Same shape and precedence as ``easyhard_ab`` (R398): a run that measured
+    nothing is NEVER a PASS, and a significant baseline win is evidence even from
+    a thin run, so FAIL outranks the thin-run INDETERMINATE.
+
+    * ``2`` INDETERMINATE (checked first - the evidence itself is void): the
+      deterministic tier, no ``correctness`` axis, or an arm that failed to
+      answer on more than ``max_capture_failure_rate`` of the rows.
+    * ``1`` FAIL: ``BASELINE wins (sig)`` on ANY judged axis. R473 looked for
+      ``correctness`` and ``overall``; ``overall`` is not an axis (they are
+      ``correctness`` / ``refs`` / ``conciseness`` / ``tone``), so only
+      ``correctness`` could ever fail the gate. Testing four axes raises the
+      false-FAIL rate under the null from ~2 % to ~8 % at 20 decisive pairs; a
+      false FAIL costs a re-run, a missed regression costs the merge.
+    * ``2`` INDETERMINATE: fewer than ``min_rows`` rows, an axis whose invalid
+      rate exceeds ``max_invalid_rate``, or fewer than ``min_decisive`` decisive
+      correctness pairs.
+    * ``0`` PASS otherwise.
     """
     if not isinstance(result, dict):
         return 2
-    tier = str(result.get("tier") or "")
-    if tier == "deterministic":
-        return 2
     axes = result.get("axes")
-    n_rows = int(result.get("n_rows") or 0)
-    if not isinstance(axes, dict) or not axes or n_rows < min_rows:
+    if (
+        str(result.get("tier") or "") == "deterministic"
+        or not isinstance(axes, dict)
+        or not isinstance(axes.get("correctness"), dict)
+    ):
         return 2
-    for ax_data in axes.values():
-        if not isinstance(ax_data, dict):
+    n_rows = int(result.get("n_rows") or 0)
+    cap = result.get("capture")
+    if isinstance(cap, dict):
+        cap_rows = int(cap.get("rows") or n_rows)
+        worst = max(int(cap.get("baseline_failed") or 0), int(cap.get("branch_failed") or 0))
+        if cap_rows > 0 and worst / cap_rows > max_capture_failure_rate:
             return 2
-        inv = int(ax_data.get("invalids") or 0)
-        if n_rows > 0 and (inv / n_rows) > max_invalid_rate:
+    if any(isinstance(a, dict) and a.get("verdict") == "BASELINE wins (sig)" for a in axes.values()):
+        return 1
+    if n_rows < min_rows:
+        return 2
+    for a in axes.values():
+        if not isinstance(a, dict) or int(a.get("invalids") or 0) / n_rows > max_invalid_rate:
             return 2
-    for key in ("correctness", "overall"):
-        ax_data = axes.get(key)
-        if isinstance(ax_data, dict) and ax_data.get("verdict") == "BASELINE wins (sig)":
-            return 1
+    c = axes["correctness"]
+    if int(c.get("wins_branch") or 0) + int(c.get("wins_baseline") or 0) < min_decisive:
+        return 2
     return 0
 
 
@@ -607,6 +680,14 @@ def run_ab(
         "label": label,
         "tier": "deterministic" if deterministic else "live-pairwise",
         "n_rows": len(rows),
+        # R474 - an arm that failed to answer is scored as an EMPTY answer and
+        # loses, so a transport outage in one arm reads as a regression (or, mirrored,
+        # as a win). Count them per arm so the gate can void the run.
+        "capture": {
+            "rows": len(rows),
+            "baseline_failed": sum(_capture_failed(arm_a.get(r.id)) for r in rows),
+            "branch_failed": sum(_capture_failed(arm_b.get(r.id)) for r in rows),
+        },
         "category_counts": category_counts(rows),
         "baseline_env": baseline_env,
         "branch_env": branch_env,
@@ -643,9 +724,8 @@ def run_ab(
               "expected_refs": list(row.expected_refs)}
         row_verdicts: dict[str, str] = {}
         for ax in pairwise_prompts.AXES:
-            global _LAST_PAIRWISE_OUTCOME
-            _LAST_PAIRWISE_OUTCOME = "tie"
-            v, agreed = _pairwise_verdict_detail(rd, ax, a, b, caller, summaries)
+            res = _pairwise_verdict_detail(rd, ax, a, b, caller, summaries)
+            v, agreed = res
             row_verdicts[ax] = v
             if agreed:
                 axes[ax].swap_agreements += 1
@@ -656,7 +736,7 @@ def run_ab(
             else:
                 axes[ax].ties += 1
                 if not agreed:
-                    if _LAST_PAIRWISE_OUTCOME == "invalid":
+                    if pair_outcome(res) == "invalid":
                         axes[ax].invalids += 1
                     else:
                         axes[ax].position_disagreements += 1

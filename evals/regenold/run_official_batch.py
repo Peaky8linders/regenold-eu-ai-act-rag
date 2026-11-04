@@ -66,6 +66,7 @@ from evals.harness.gate_validity import (
 from evals.regenold.hard_preamble import (
     DEFAULT_MODE,
     MODE_FIXED,
+    MODE_PUBLISHED,
     MODE_ROLLING,
     build_prefixed_messages,
     build_prefixed_pushback_messages,
@@ -83,6 +84,24 @@ from evals.regenold.official_batch import (
 #: ``REGENOLD_HARD_PREAMBLE=fixed`` arm so a reader can prove from the checkpoint
 #: alone which request shape produced it.
 _FIXED_PREAMBLE_DIGEST = preamble_digest()
+
+#: R474 - every request shape that carries a PRE-FIXED dialogue (the same one
+#: before every row), mapped to the digest of the dialogue it posts. A mode that
+#: ``hard_preamble_mode()`` accepts but that is absent here would be read as the
+#: ROLLING shape by the runner - R473 added ``published`` to ``MODES`` and did
+#: exactly that, so a ``REGENOLD_HARD_PREAMBLE=published`` run posted the rolling
+#: conversation under a ``published`` label. ``tests/test_r474_review_fixes.py``
+#: pins that every mode in ``MODES`` is honoured on the wire.
+_FIXED_SHAPE_DIGESTS: dict[str, str] = {
+    MODE_FIXED: _FIXED_PREAMBLE_DIGEST,
+    MODE_PUBLISHED: preamble_digest(profile=MODE_PUBLISHED),
+}
+
+
+def _request_shape(preamble: str) -> str:
+    """The arm-level request-shape string the paired gate compares."""
+    digest = _FIXED_SHAPE_DIGESTS.get(preamble)
+    return f"{preamble}:{digest}" if digest else MODE_ROLLING
 
 _RESULTS = Path(__file__).resolve().parents[1] / "bench" / "results"
 def acquire_run_lock(label: str) -> Path:
@@ -915,17 +934,27 @@ def _run_hard(
       pre-R424 boards can be reproduced, and because a probe that MEASURES that
       leak must be able to ask for it.
 
-    ``seed_history`` is ignored in ``fixed`` mode by construction: the fixture IS
-    the history, which is what makes a resumed fixed run identical to an
-    uninterrupted one (the R423.3 leak cannot recur in this mode).
+    * ``published`` (R473/R474, explicit opt-in) - the same constant-of-the-run
+      shape as ``fixed``, but the dialogue is the evaluator's RELEASED 9-exchange
+      conversation (``eu-ai-act-benchmark-2026``), not our reconstruction.
+
+    ``seed_history`` is ignored in ``fixed`` and ``published`` mode by
+    construction: the fixture IS the history, which is what makes a resumed run
+    identical to an uninterrupted one (the R423.3 leak cannot recur in these
+    modes).
     """
-    fixed = preamble == MODE_FIXED
+    # R474 - ``fixed`` means "a pre-fixed dialogue precedes every row": true of
+    # ``fixed`` AND ``published``. The only difference between them is WHICH
+    # dialogue (``profile``), so the profile is threaded through every build call
+    # instead of being inferred from a boolean.
+    fixed = preamble in _FIXED_SHAPE_DIGESTS
+    profile = MODE_PUBLISHED if preamble == MODE_PUBLISHED else None
     out: list[dict[str, Any]] = []
     history: list[dict[str, str]] = [] if fixed else list(seed_history or [])
     for i, row in enumerate(rows, 1):
         # --- turn 1: the question inside the running conversation ----------
         msgs1 = (
-            build_prefixed_messages(row.question)
+            build_prefixed_messages(row.question, profile=profile)
             if fixed
             else build_hard_messages(row, history)
         )
@@ -939,7 +968,7 @@ def _run_hard(
         if ans1:
             msgs2 = (
                 build_prefixed_pushback_messages(
-                    row.question, ans1, row.pushback_content()
+                    row.question, ans1, row.pushback_content(), profile=profile
                 )
                 if fixed
                 else build_pushback_messages(row, history, ans1)
@@ -957,7 +986,7 @@ def _run_hard(
             # digest when there was one. A board is only interpretable if the
             # shape that produced it is on the row.
             "hard_preamble": preamble,
-            "hard_preamble_digest": _FIXED_PREAMBLE_DIGEST if fixed else "",
+            "hard_preamble_digest": _FIXED_SHAPE_DIGESTS.get(preamble, ""),
             # R293 — in hard mode every row is HARD / Multi-Turn Context &
             # Coreference by the official taxonomy, so the per-question label
             # from the single-turn export is not the operative one here; keep it
@@ -1358,7 +1387,7 @@ def _arm(
                             # fixed shape's history is the fixture, so a resumed
                             # fixed run is identical to an uninterrupted one.
                             seed = (
-                                [] if preamble == MODE_FIXED
+                                [] if preamble in _FIXED_SHAPE_DIGESTS
                                 else seed_history_from_records(previous)
                             )
                             if previous and seed:
@@ -1414,11 +1443,7 @@ def _arm(
                 repeats=repeats,
                 repeat_identical_rate=identical_rate,
                 sample_rows=replicates,
-                request_shape=(
-                    f"{preamble}:{_FIXED_PREAMBLE_DIGEST}"
-                    if preamble == MODE_FIXED
-                    else MODE_ROLLING
-                ),
+                request_shape=_request_shape(preamble),
                 # R425 — what this arm actually EMITTED. A route pass that
                 # rewrites the references after Stage-2 leaves every dispatched
                 # byte identical, so this is the only place its effect can be

@@ -173,6 +173,38 @@ def _judge_basis_sha(row: dict) -> str:
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:12]
 
 
+def _split_cached(
+    rows: list[dict], cache: dict[str, dict], judge_id: str, repeats: int
+) -> tuple[list[dict], list[dict], int, int]:
+    """``(cached, todo, stale_basis, unstamped_replayed)``.
+
+    R474 - the split itself is unchanged; it now COUNTS the two cases that were
+    silent. ``stale_basis``: a complete verdict was found but its ``_basis_sha`` is
+    not the current one, so it is re-judged live (R473 widened the basis, which
+    invalidated every previously stamped line). ``unstamped_replayed``: a verdict
+    with no stamp at all (pre-R409 lines) was replayed unchecked - so the older the
+    line, the LESS it is checked.
+    """
+    cached: list[dict] = []
+    todo: list[dict] = []
+    stale = unstamped = 0
+    for r in rows:
+        v = cache.get(_row_cache_key(r, judge_id))
+        complete = bool(v) and _verdict_complete(v, repeats)
+        if (
+            complete
+            and _criteria_match(v, r)
+            and len(v.get("criteria") or []) == len(r["criteria_text"])
+        ):
+            cached.append({**r, **v})
+            unstamped += v.get("_basis_sha") is None
+        else:
+            if complete and v.get("_basis_sha") is not None and v["_basis_sha"] != _judge_basis_sha(r):
+                stale += 1
+            todo.append(r)
+    return cached, todo, stale, unstamped
+
+
 def _criteria_match(v: dict, row: dict) -> bool:
     """R409 — a cached verdict is valid only for the criteria and grounding it judged.
 
@@ -257,12 +289,50 @@ _VERDICT_KEYS = (
     "_judge_runs",
     "_criteria_rate_min",
     "_criteria_rate_max",
+    "_criteria_rate_mean",
+    "_strict_rate_mean",
+    "_tone_rate_mean",
     "_judge_errors",
     "_judge_exception",
     "_corr_runs",
     "_tone_runs",
     "_tone_runs_raw",
 )
+
+
+def _per_run_scores(ordered: list[dict]) -> tuple[list[dict], int]:
+    """Score each judge repetition on ITS OWN verdicts; ``(scores, skipped)``.
+
+    R474 - the Min-Max block used to fill a repetition a row's judge had REJECTED
+    (``None``) from that row's majority vote, so a "3 repetitions" band could
+    contain a synthetic run: repeats 0 and 2 all-pass and repeat 1 unreadable
+    printed "100 % - 100 %, +0.0 pp". A repetition enters the band only when every
+    row that carries repetitions has a live verdict for it; the others are counted
+    and reported, not blended. Rows with no repetitions at all (an older cache
+    line) do not make a repetition incomplete.
+    """
+    valid = [len(r["_corr_runs"]) for r in ordered if r.get("_corr_runs")]
+    repeats = min(valid) if valid else 0
+    scores: list[dict] = []
+    skipped = 0
+    for run_idx in range(repeats):
+        rows: list[dict] = []
+        complete = True
+        for r in ordered:
+            row = dict(r)
+            for runs_key, field in (("_corr_runs", "criteria"), ("_tone_runs_raw", "tone_ok")):
+                runs = r.get(runs_key)
+                if runs and len(runs) > run_idx:
+                    if runs[run_idx] is None:
+                        complete = False
+                    else:
+                        row[field] = runs[run_idx]
+            rows.append(row)
+        if complete:
+            scores.append(score_rows(rows))
+        else:
+            skipped += 1
+    return scores, skipped
 
 
 def _length_controlled_rows(rows: list[dict]) -> list[dict]:
@@ -670,14 +740,18 @@ def main() -> int:
             redeepened += r["references"] != before
 
     cache = {} if a.rejudge else load_cache(cache_target)
-    todo, cached = [], []
-    for r in rows:
-        v = cache.get(_row_cache_key(r, judge_id))
-        if v and _verdict_complete(v, a.repeats) and _criteria_match(v, r) and len(v.get("criteria") or []) == len(r["criteria_text"]):
-            cached.append({**r, **v})
-        else:
-            todo.append(r)
+    cached, todo, stale_basis, unstamped = _split_cached(rows, cache, judge_id, a.repeats)
     print(f"{len(rows)} rows: {len(cached)} cached, {len(todo)} to judge (cache: {cache_target.name})")
+    if stale_basis:
+        print(
+            f"  NOTE: {stale_basis} cached verdict(s) ignored - judged under a different "
+            "question/criteria/provisions/prompt basis (R473 widened it); re-judging them live."
+        )
+    if unstamped:
+        print(
+            f"  NOTE: {unstamped} cached verdict(s) carry no basis stamp (pre-R409 lines) "
+            "and were replayed unchecked."
+        )
 
     cache_target.parent.mkdir(parents=True, exist_ok=True)
     import threading as _threading  # noqa: PLC0415
@@ -708,6 +782,9 @@ def main() -> int:
                                             "_judge_runs",
                                             "_criteria_rate_min",
                                             "_criteria_rate_max",
+                                            "_criteria_rate_mean",
+                                            "_strict_rate_mean",
+                                            "_tone_rate_mean",
                                             "_judge_errors",
                                             "_corr_runs",
                                             "_tone_runs_raw",
@@ -939,24 +1016,16 @@ def main() -> int:
     # Min-Max Uncertainty Bounds across repetitions (per official Table 1 & Table 2)
     has_runs = any("_corr_runs" in r for r in ordered)
     if has_runs:
-        per_run_scores = []
-        valid_repeats = [len(r["_corr_runs"]) for r in ordered if r.get("_corr_runs")]
-        repeats_count = min(valid_repeats) if valid_repeats else 0
+        per_run_scores, skipped_runs = _per_run_scores(ordered)
+        repeats_count = len(per_run_scores)
         if repeats_count > 1:
-            for run_idx in range(repeats_count):
-                run_rows = []
-                for r in ordered:
-                    r_copy = dict(r)
-                    if r.get("_corr_runs") and len(r["_corr_runs"]) > run_idx and r["_corr_runs"][run_idx] is not None:
-                        r_copy["criteria"] = r["_corr_runs"][run_idx]
-                    if r.get("_tone_runs_raw") and len(r["_tone_runs_raw"]) > run_idx and r["_tone_runs_raw"][run_idx] is not None:
-                        r_copy["tone_ok"] = r["_tone_runs_raw"][run_idx]
-                    run_rows.append(r_copy)
-                per_run_scores.append(score_rows(run_rows))
-
             if per_run_scores:
                 print("-" * 88)
-                print(f"Min–Max Uncertainty Bounds across {repeats_count} Repetitions (Temperature {os.getenv('R388_JUDGE_TEMPERATURE', '0.1')})")
+                print(
+                    f"Min–Max Uncertainty Bounds across {repeats_count} Repetitions "
+                    f"(Temperature {os.getenv('R388_JUDGE_TEMPERATURE', '0.1')})"
+                    + (f"  [{skipped_runs} incomplete repetition(s) not scored]" if skipped_runs else "")
+                )
                 print("-" * 88)
                 print(f"{'Metric':<26}{'Range':>20}{'Spread':>15}")
                 for axis_name, axis_label in [

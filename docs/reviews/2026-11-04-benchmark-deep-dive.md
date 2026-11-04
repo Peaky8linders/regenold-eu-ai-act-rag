@@ -1,5 +1,13 @@
 # EU AI Act benchmark: evaluation discrepancies and improvement plan
 
+> **Provenance (R474).** The evidence, probe outputs and `file:line` references in this
+> document were produced against commit `5a64d896`, the tree BEFORE PR #510, which then edited
+> the files they cite (`rubric.py`, `paired_ab.py`, `judge.py`, `score_arm.py`, `regenold.py`), so
+> many line numbers no longer point where they did. The adjacent `pipeline_probe.json` was
+> regenerated AFTER the fix and shows the post-fix behaviour; the pre-fix evidence this document
+> describes is `docs/measurements/paper_2611_04546/pipeline_probe_pre_r473.json` (run on `beb7aeb9`,
+> hospital paraphrases: 5 -> 3 and 5 -> 5 sentences, both with the single reference `Article 26.5`).
+
 Date: 4 November 2026. Local service commit: `5a64d8965da6f723704e21ca2f0ecf22c19768d0`, branch `fix/r468-normaliser-shaping`.
 
 **Repair evaluation fidelity and decision validity first. Then fix content and citation loss in finalization.** The audit reproduced several cases where the instrument rewards the wrong direction. A better generator cannot resolve those measurement errors.

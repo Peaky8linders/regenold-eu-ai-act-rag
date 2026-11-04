@@ -1,5 +1,13 @@
 # Judge audit against arXiv 2611.04546
 
+> **Provenance (R474).** The evidence, probe outputs and `file:line` references in this
+> document were produced against commit `5a64d896`, the tree BEFORE PR #510, which then edited
+> the files they cite (`rubric.py`, `paired_ab.py`, `judge.py`, `score_arm.py`, `regenold.py`), so
+> many line numbers no longer point where they did. The adjacent `pipeline_probe.json` was
+> regenerated AFTER the fix and shows the post-fix behaviour; the pre-fix evidence this document
+> describes is `docs/measurements/paper_2611_04546/pipeline_probe_pre_r473.json` (run on `beb7aeb9`,
+> hospital paraphrases: 5 -> 3 and 5 -> 5 sentences, both with the single reference `Article 26.5`).
+
 Audit date: 2026-11-04. Repository: `D:\Claude Projects\regenold-eu-ai-act-rag`, branch `fix/r468-normaliser-shaping`. Findings below concern inspected executable code and synthetic offline reproductions. No official-question replay, live generation, paid judging, or runtime changes were performed.
 
 The published protocol should now replace inferred competition formulas as the fidelity target. Preserve historical reports under their original instrument version; do not silently relabel old scores. A separate grounded safety evaluation remains necessary.

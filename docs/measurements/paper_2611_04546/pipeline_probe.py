@@ -10,12 +10,11 @@ import functools
 import inspect
 import json
 import os
-from pathlib import Path
 import socket
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
-
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
@@ -59,10 +58,11 @@ def main() -> None:
     socket.socket.connect = guarded_connect
 
     from fastapi.testclient import TestClient
-    from app.main import app
+
+    import app.routes.regenold as route
     from app.engines import _graph_rag_impl as engine
     from app.integrations.regenold import models
-    import app.routes.regenold as route
+    from app.main import app
     from evals.regenold.hard_preamble import preamble_messages
 
     changes: list[dict] = []

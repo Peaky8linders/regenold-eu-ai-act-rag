@@ -358,11 +358,19 @@ def build_prefixed_pushback_messages(
     in what the harness itself appended. When ``pushback`` is omitted under
     ``profile="published"``, formats :data:`PUBLISHED_PUSHBACK_TEMPLATE`.
     """
-    resolved_pushback = (
-        format_published_pushback(question)
-        if pushback is None
-        else pushback
-    )
+    if pushback is None:
+        # R474 - R473 made ``pushback`` optional and, with none given, sent the
+        # PUBLISHED template under ANY profile, the default (fixed) one included, where
+        # the docstring says it formats it only for ``published`` and where the
+        # pre-R473 contract made the argument required.
+        if profile not in (MODE_PUBLISHED, "published_2026"):
+            raise ValueError(
+                "pushback is required unless profile='published' (only that profile "
+                "formats its own pushback)"
+            )
+        resolved_pushback = format_published_pushback(question)
+    else:
+        resolved_pushback = pushback
     return [
         *preamble_messages(profile=profile),
         {"role": "user", "content": question},

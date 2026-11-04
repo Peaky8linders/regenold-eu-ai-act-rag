@@ -41,8 +41,10 @@ def run() -> dict:
 
     a = ArmAnswer("Candidate A.", [], 0, 200)
     b = ArmAnswer("Candidate B.", [], 0, 200)
-    # Caller is a local lambda returning a dictionary: it cannot reach a model.
-    invalid_caller = lambda _prompt: {"winner": "banana"}
+    # Caller is a local function returning a dictionary: it cannot reach a model.
+    def invalid_caller(_prompt):
+        return {"winner": "banana"}
+
     invalid_one = _judge_one_ok(invalid_caller, "synthetic prompt")
     invalid_pair = _pairwise_verdict_detail(
         {"question": "Synthetic question"}, "tone", a, b, invalid_caller, {}

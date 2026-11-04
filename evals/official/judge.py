@@ -190,6 +190,32 @@ def _parse_bool(val: Any) -> bool:
     return False
 
 
+_TRUE_WORDS = ("true", "1", "yes", "pass")
+_FALSE_WORDS = ("false", "0", "no", "fail")
+
+
+def _strict_bool(val: Any) -> bool | None:
+    """A verdict's ``satisfied`` as a bool, or ``None`` when it is not a boolean at all.
+
+    R474 - ``_parse_bool`` returns False for anything it does not recognise, so a
+    malformed reply (``None``, ``"banana"``, a dict, ``2``) became a legitimate
+    criterion FAILURE. R473 made a malformed pairwise winner INVALID rather than a
+    tie and missed this twin. The accepted spellings are exactly the ones
+    ``_parse_bool`` always understood, plus their negations.
+    """
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, int | float):
+        return True if val == 1 else False if val == 0 else None
+    if isinstance(val, str):
+        word = val.strip().lower()
+        if word in _TRUE_WORDS:
+            return True
+        if word in _FALSE_WORDS:
+            return False
+    return None
+
+
 _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.MULTILINE)
 _remark_state = threading.local()
 
@@ -491,6 +517,9 @@ def _verdicts_from(verdicts: list, n_criteria: int) -> tuple[list[bool] | None, 
         return [], []
     if not all(isinstance(v, dict) and "satisfied" in v for v in verdicts):
         return None, []
+    flags = [_strict_bool(v["satisfied"]) for v in verdicts]
+    if any(f is None for f in flags):
+        return None, []
 
     has_n = [("n" in v and v["n"] is not None) for v in verdicts]
     if any(has_n):
@@ -498,17 +527,19 @@ def _verdicts_from(verdicts: list, n_criteria: int) -> tuple[list[bool] | None, 
             return None, []
         by_n: dict[int, bool] = {}
         remarks_by_n: dict[int, str] = {}
-        for v in verdicts:
+        for flag, v in zip(flags, verdicts, strict=True):
             raw_n = v["n"]
             if isinstance(raw_n, bool):
                 return None, []
+            if isinstance(raw_n, float) and not raw_n.is_integer():
+                return None, []  # R474: 1.5 is not criterion 1, it was truncated to it
             try:
                 item_n = int(raw_n)
             except Exception:
                 return None, []
             if item_n in by_n:
                 return None, []
-            by_n[item_n] = _parse_bool(v.get("satisfied"))
+            by_n[item_n] = flag
             remarks_by_n[item_n] = str(v.get("why") or "").strip()
         keys = set(by_n.keys())
         expected_1 = set(range(1, n_criteria + 1))
@@ -523,7 +554,7 @@ def _verdicts_from(verdicts: list, n_criteria: int) -> tuple[list[bool] | None, 
             [remarks_by_n[i] for i in range(1, n_criteria + 1)],
         )
 
-    flat = [_parse_bool(v.get("satisfied")) for v in verdicts]
+    flat = [bool(f) for f in flags]
     remarks = [str(v.get("why") or "").strip() for v in verdicts]
     return flat, remarks
 
