@@ -287,12 +287,13 @@ def _capture_arm(
 def _judge_one_ok(caller, prompt: str) -> tuple[str, bool]:
     """Return ``(verdict, judged)`` for one ordering.
 
-    ``judged`` is False when the call or the parse failed. The verdict alone
+    ``judged`` is False when the call or the parse failed, or when ``winner`` is
+    not an explicit ``"A"``, ``"B"``, or ``"tie"`` token. The verdict alone
     collapses that to ``"tie"``, and R418 exists because the swap-consistency
     metric then read two independent FAILURES as two agreements: same verdict,
     so ``agreed=True`` — a "the judge is stable" signal produced by the judge
     not having run. The flag is what lets the caller tell a real tie from an
-    error fallback.
+    error fallback or malformed winner string.
     """
     from evals.judge.runner import _call_judge_with_retry
 
@@ -300,12 +301,60 @@ def _judge_one_ok(caller, prompt: str) -> tuple[str, bool]:
     if not isinstance(result, dict) or result.get("judge_error"):
         return "tie", False
     w = str(result.get("winner") or "").strip().upper()
-    return (w, True) if w in ("A", "B") else ("tie", True)
+    if w in ("A", "B"):
+        return w, True
+    if w == "TIE":
+        return "tie", True
+    return "tie", False
 
 
 def _judge_one(caller, prompt: str) -> str:
     """Return 'A' | 'B' | 'tie' (or 'tie' on any judge error)."""
     return _judge_one_ok(caller, prompt)[0]
+
+
+_LAST_PAIRWISE_OUTCOME: str = "tie"
+
+
+def _pairwise_verdict_outcome(
+    row_dict: dict[str, Any],
+    axis: str,
+    a: ArmAnswer,
+    b: ArmAnswer,
+    caller,
+    summaries: dict[str, str],
+) -> tuple[str, bool, str]:
+    """Return ``(verdict, agreed, outcome)`` where ``outcome`` distinguishes
+    ``'A' | 'B' | 'tie' | 'position_disagreement' | 'invalid'``.
+    """
+    global _LAST_PAIRWISE_OUTCOME
+    # Order 1: prompt-A = arm-A, prompt-B = arm-B.
+    p1 = pairwise_prompts.render(
+        axis, row_dict, answer_a=a.answer, refs_a=a.refs,
+        answer_b=b.answer, refs_b=b.refs, article_summaries=summaries,
+    )
+    w1, ok1 = _judge_one_ok(caller, p1)
+    # Order 2 (swapped): prompt-A = arm-B, prompt-B = arm-A.
+    p2 = pairwise_prompts.render(
+        axis, row_dict, answer_a=b.answer, refs_a=b.refs,
+        answer_b=a.answer, refs_b=a.refs, article_summaries=summaries,
+    )
+    w2_raw, ok2 = _judge_one_ok(caller, p2)
+    # Translate order-2 back to arm space.
+    w2 = {"A": "B", "B": "A", "tie": "tie"}[w2_raw]
+    # R418 — agreement requires that BOTH orderings actually produced a verdict.
+    # Two failed calls return "tie" apiece and used to count as agreement.
+    both_ok = bool(ok1 and ok2)
+    agreed = both_ok and (w1 == w2)
+    verdict = w1 if (agreed and w1 in ("A", "B")) else "tie"
+    if not both_ok:
+        outcome = "invalid"
+    elif not agreed:
+        outcome = "position_disagreement"
+    else:
+        outcome = verdict
+    _LAST_PAIRWISE_OUTCOME = outcome
+    return verdict, agreed, outcome
 
 
 def _pairwise_verdict_detail(
@@ -328,24 +377,9 @@ def _pairwise_verdict_detail(
     decisive win requires BOTH orderings to agree; a position-flip → 'tie'
     (cancels position bias).
     """
-    # Order 1: prompt-A = arm-A, prompt-B = arm-B.
-    p1 = pairwise_prompts.render(
-        axis, row_dict, answer_a=a.answer, refs_a=a.refs,
-        answer_b=b.answer, refs_b=b.refs, article_summaries=summaries,
+    verdict, agreed, _outcome = _pairwise_verdict_outcome(
+        row_dict, axis, a, b, caller, summaries
     )
-    w1, ok1 = _judge_one_ok(caller, p1)
-    # Order 2 (swapped): prompt-A = arm-B, prompt-B = arm-A.
-    p2 = pairwise_prompts.render(
-        axis, row_dict, answer_a=b.answer, refs_a=b.refs,
-        answer_b=a.answer, refs_b=a.refs, article_summaries=summaries,
-    )
-    w2_raw, ok2 = _judge_one_ok(caller, p2)
-    # Translate order-2 back to arm space.
-    w2 = {"A": "B", "B": "A", "tie": "tie"}[w2_raw]
-    # R418 — agreement requires that BOTH orderings actually produced a verdict.
-    # Two failed calls return "tie" apiece and used to count as agreement.
-    agreed = bool(ok1 and ok2) and (w1 == w2)
-    verdict = w1 if (agreed and w1 in ("A", "B")) else "tie"
     return verdict, agreed
 
 
@@ -393,6 +427,11 @@ class AxisResult:
     wins_a: int = 0   # baseline beats branch
     ties: int = 0
     swap_agreements: int = 0
+    invalids: int = 0
+    position_disagreements: int = 0
+
+    def genuine_ties(self) -> int:
+        return max(0, self.ties - self.invalids - self.position_disagreements)
 
     def effective_win_rate_b(self, total_rows: int) -> float | None:
         """Standard Tie-Aware Effective Win Rate (Chatbot Arena / Elo standard):
@@ -426,6 +465,45 @@ class AxisResult:
         if wr < 0.5:
             return "baseline leans (ns)"
         return "even"
+
+
+def gate_exit_code(
+    result: dict[str, Any],
+    *,
+    min_rows: int = 1,
+    max_invalid_rate: float = 0.2,
+) -> int:
+    """Explicit 3-state gate exit code for pairwise A/B results.
+
+    Returns:
+      - ``0`` (PASS): live pairwise tier ran with ``n_rows >= min_rows``,
+        invalid rate within ``max_invalid_rate``, and baseline does not win
+        significantly on ``correctness`` or ``overall``.
+      - ``1`` (FAIL): baseline wins significantly (``BASELINE wins (sig)``) on
+        ``correctness`` or ``overall``.
+      - ``2`` (INDETERMINATE): deterministic fallback tier, insufficient rows,
+        missing axes, or invalid judge rate exceeding ``max_invalid_rate``.
+    """
+    if not isinstance(result, dict):
+        return 2
+    tier = str(result.get("tier") or "")
+    if tier == "deterministic":
+        return 2
+    axes = result.get("axes")
+    n_rows = int(result.get("n_rows") or 0)
+    if not isinstance(axes, dict) or not axes or n_rows < min_rows:
+        return 2
+    for ax_data in axes.values():
+        if not isinstance(ax_data, dict):
+            return 2
+        inv = int(ax_data.get("invalids") or 0)
+        if n_rows > 0 and (inv / n_rows) > max_invalid_rate:
+            return 2
+    for key in ("correctness", "overall"):
+        ax_data = axes.get(key)
+        if isinstance(ax_data, dict) and ax_data.get("verdict") == "BASELINE wins (sig)":
+            return 1
+    return 0
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -565,6 +643,8 @@ def run_ab(
               "expected_refs": list(row.expected_refs)}
         row_verdicts: dict[str, str] = {}
         for ax in pairwise_prompts.AXES:
+            global _LAST_PAIRWISE_OUTCOME
+            _LAST_PAIRWISE_OUTCOME = "tie"
             v, agreed = _pairwise_verdict_detail(rd, ax, a, b, caller, summaries)
             row_verdicts[ax] = v
             if agreed:
@@ -575,6 +655,11 @@ def run_ab(
                 axes[ax].wins_a += 1
             else:
                 axes[ax].ties += 1
+                if not agreed:
+                    if _LAST_PAIRWISE_OUTCOME == "invalid":
+                        axes[ax].invalids += 1
+                    else:
+                        axes[ax].position_disagreements += 1
         per_row.append({"id": row.id, "category": row.category, "verdicts": row_verdicts})
         print(f"  [judge] {i + 1}/{len(rows)} {row.id}  {row_verdicts}", flush=True)
 
@@ -582,6 +667,9 @@ def run_ab(
     result["axes"] = {
         ax: {
             "wins_branch": r.wins_b, "wins_baseline": r.wins_a, "ties": r.ties,
+            "genuine_ties": r.genuine_ties(),
+            "invalids": r.invalids,
+            "position_disagreements": r.position_disagreements,
             "win_rate_branch": r.win_rate_b(), "p_value": r.p_value(),
             "verdict": r.verdict(),
             # R416 — the tie-aware effective win rate (Chatbot Arena standard)
@@ -593,6 +681,7 @@ def run_ab(
         for ax, r in axes.items()
     }
     result["per_row"] = per_row
+    result["gate_exit_code"] = gate_exit_code(result)
     return result
 
 
@@ -657,6 +746,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--timeout", type=float, default=90.0,
                    help="Per-call timeout for answer capture and judging (default: 90s).")
+    p.add_argument(
+        "--enforce-gate",
+        action="store_true",
+        help="Return explicit gate exit code (0=PASS, 1=FAIL, 2=INDETERMINATE).",
+    )
     args = p.parse_args(argv)
 
     mt = {"only": True, "exclude": False}.get(args.multiturn or "")
@@ -685,6 +779,8 @@ def main(argv: list[str] | None = None) -> int:
     out = _RESULTS / f"ab-judge-{args.label}.json"
     out.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
     print(f"\nsidecar: {out}")
+    if args.enforce_gate:
+        return gate_exit_code(result)
     return 0
 
 

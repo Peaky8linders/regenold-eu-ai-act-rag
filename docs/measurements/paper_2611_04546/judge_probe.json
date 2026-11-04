@@ -1,0 +1,71 @@
+{
+  "scope": "synthetic offline examples; not an effectiveness evaluation",
+  "criterion_weighting_sign_reversal": {
+    "baseline_criteria": [
+      [
+        false
+      ],
+      [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    ],
+    "branch_criteria": [
+      [
+        true
+      ],
+      [
+        false,
+        false,
+        true,
+        true,
+        true
+      ]
+    ],
+    "paper_micro_delta_pp": -16.666666666666675,
+    "local_paired_macro_delta_pp": 30.0
+  },
+  "malformed_winner": {
+    "payload": {
+      "winner": "banana"
+    },
+    "one_call_verdict_and_valid": [
+      "tie",
+      false
+    ],
+    "pair_verdict_and_swap_agreement": [
+      "tie",
+      false
+    ]
+  },
+  "majority_vs_mean_repetitions": {
+    "runs": [
+      [
+        true,
+        false
+      ],
+      [
+        true,
+        true
+      ],
+      [
+        false,
+        true
+      ]
+    ],
+    "majority_criteria": [
+      true,
+      true
+    ],
+    "majority_loose": 1.0,
+    "majority_strict": 1.0,
+    "mean_run_loose": 0.6666666666666666,
+    "mean_run_strict": 0.3333333333333333
+  },
+  "cache_basis_omits_question": {
+    "same_basis_after_question_change": false
+  }
+}

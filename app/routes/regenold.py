@@ -2631,28 +2631,36 @@ _ANCHOR_ARTICLE_RE = re.compile(
     r"|\bAnnex\s+([IVXLCDM]+|\d+)\b",
     re.IGNORECASE,
 )
-_ANCHOR_ROLE_WORDS: frozenset[str] = frozenset([
+_ANCHOR_ROLE_WORDS: tuple[str, ...] = (
+    "authorized representative",
+    "authorised representative",
     "provider",
     "deployer",
     "importer",
     "distributor",
-    "authorized representative",
-    "authorised representative",
     "operator",
     "manufacturer",
-])
-_ANCHOR_RISK_WORDS: frozenset[str] = frozenset([
+)
+_ANCHOR_RISK_WORDS: tuple[str, ...] = (
+    "unacceptable risk",
+    "general-purpose",
+    "limited risk",
+    "minimal risk",
     "high-risk",
     "high risk",
     "prohibited",
-    "limited risk",
-    "minimal risk",
-    "unacceptable risk",
-    "general-purpose",
     "gpai",
     "annex iii",
     "annex i",
-])
+)
+_ANCHOR_ROLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
+    (role, re.compile(r"\b" + re.escape(role) + r"s?\b", re.IGNORECASE))
+    for role in _ANCHOR_ROLE_WORDS
+)
+_ANCHOR_RISK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
+    (risk, re.compile(r"\b" + re.escape(risk) + r"\b", re.IGNORECASE))
+    for risk in _ANCHOR_RISK_WORDS
+)
 
 
 def _hash16(value: str) -> str:
@@ -4013,11 +4021,25 @@ _VERDICT_NODE_RE = re.compile(r"^classification-([a-z0-9_]+)-")
 #: become a provider under Article 25(1)?").
 _PINNED_ENGINE_VERDICTS = frozenset({"reclassification_scope", "role_difference"})
 
+#: Multi-sentence cite-anchored curated obligation verdicts whose full text must
+#: not be clipped to 3 sentences when asked as a single-sentence question.
+_FULL_TEXT_ENGINE_VERDICTS = frozenset(
+    {
+        "hospital_deployer_obligations",
+        "gpai_transparency_exception",
+        "systemic_risk_scope",
+    }
+)
+
 
 def _pinned_verdict_names() -> frozenset:
     from app.engines.statutory_precision import STATUTORY_VERDICT_NAMES  # noqa: PLC0415
 
     return STATUTORY_VERDICT_NAMES | _PINNED_ENGINE_VERDICTS
+
+
+def _full_text_verdict_names() -> frozenset:
+    return _pinned_verdict_names() | _FULL_TEXT_ENGINE_VERDICTS
 
 
 def _seeded_verdict_name(rag_res: Any) -> str:
@@ -5295,6 +5317,33 @@ def _curated_fold_heads(declared: tuple, answer_text: str) -> set[str]:
     }
 
 
+_GRAIN_ENUMERATION_MIN = 3
+
+
+def _curated_enumerated_heads(declared: tuple) -> set[str]:
+    """Curated heads declared alongside >=3 distinct sub-points of the same head.
+
+    When a curated obligation summary (e.g. ``hospital_deployer_obligations``
+    with ``Article 26`` + ``26.1, 26.2, 26.5, 26.6``, or ``ai_board_governance``
+    with ``Article 65`` + ``65.3, 65.4, 65.5, 65.7``) collapses its multi-leaf
+    cluster to the parent head, the answer summarizes the article across 3+
+    paragraphs and must remain at head grain rather than deepening to a single
+    arbitrary paragraph. Two-subpoint clusters (e.g. ``51.1, 51.2``) are not
+    exempted and continue to deepen to the operative primary paragraph.
+    """
+    if not declared:
+        return set()
+    norm = [" ".join(str(r).split()) for r in declared if str(r).strip()]
+    heads = {d for d in norm if _GRAIN_HEAD_RE.match(d)}
+    out: set[str] = set()
+    for h in heads:
+        prefix = h + "."
+        subpoints = {d for d in norm if d.startswith(prefix)}
+        if len(subpoints) >= _GRAIN_ENUMERATION_MIN:
+            out.add(h)
+    return out
+
+
 def _curated_budget_cut(
     candidates: list[str], declared: tuple, answer_text: str, budget: int,
 ) -> list[str]:
@@ -5306,7 +5355,9 @@ def _curated_budget_cut(
     "..., such as chatbots and emotion recognition tools?"). With
     ``REGENOLD_CURATED_HEAD_GRAIN`` on, such a sub-point folds back into its
     declared head unless the curated prose names a sub-point of that head. The
-    declared refs then come first, in their declared order, so the ``[:budget]``
+    declared refs then come first, in their declared order (after collapsing
+    any multi-leaf cluster under a declared head so 4 sub-points of one article
+    cannot evict the remaining distinct declared articles), so the ``[:budget]``
     cut can never evict one in favour of an anchor.
     """
     norm = [" ".join(str(r).split()) for r in declared]
@@ -5320,7 +5371,7 @@ def _curated_budget_cut(
         if item not in folded:
             folded.append(item)
     present = {" ".join(str(c).split()) for c in folded}
-    first = [d for d in norm if d in present]
+    first = _collapse_multi_leaf_clusters([d for d in norm if d in present])
     rest = [c for c in folded if " ".join(str(c).split()) not in declared_set]
     return (first + rest)[:budget]
 
@@ -10040,14 +10091,14 @@ def _extract_conversation_anchors(turns: list[Any]) -> str:
             if norm not in refs_seen:
                 refs_seen.append(norm)
 
-        # Role words
-        for role in _ANCHOR_ROLE_WORDS:
-            if role in text_lower and role not in roles_seen:
+        # Role words (token-boundary matched in deterministic tuple order)
+        for role, role_re in _ANCHOR_ROLE_PATTERNS:
+            if role not in roles_seen and role_re.search(text_lower):
                 roles_seen.append(role)
 
-        # Risk-tier markers
-        for risk in _ANCHOR_RISK_WORDS:
-            if risk in text_lower and risk not in risk_seen:
+        # Risk-tier markers (token-boundary matched so "Annex III" never matches "annex i")
+        for risk, risk_re in _ANCHOR_RISK_PATTERNS:
+            if risk not in risk_seen and risk_re.search(text_lower):
                 risk_seen.append(risk)
 
     parts: list[str] = []
@@ -11886,8 +11937,9 @@ def regenold_eu_ai_act_ask(
     except Exception:  # noqa: BLE001 — answer shaping must never break the route
         _r467_verdict = ""
     _r467_statutory = bool(_r467_verdict) and _r467_verdict in _pinned_verdict_names()
+    _r467_full_text = bool(_r467_verdict) and _r467_verdict in _full_text_verdict_names()
     try:
-        set_curated_full_text(_r467_statutory and _curated_full_text_enabled())
+        set_curated_full_text(_r467_full_text and _curated_full_text_enabled())
     except Exception:  # noqa: BLE001 — answer shaping must never break the route
         logger.warning("curated_full_text_set_failure", exc_info=True)
 
@@ -14823,7 +14875,8 @@ def regenold_eu_ai_act_ask(
                 else question,
                 answer_text,
                 exempt_heads=(
-                    set() if _deepen_collapsed_heads_enabled() else _collapsed_to_heads
+                    (set() if _deepen_collapsed_heads_enabled() else _collapsed_to_heads)
+                    | _curated_enumerated_heads(_curated_declared_refs)
                 ),
                 # R452c — a curated answer's declared heads (whose sub-points its
                 # prose does not name) deepen only where the curated answer backs

@@ -49,10 +49,12 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
 __all__ = [
+    "ClaimProvisionLink",
     "EVIDENCE_BLOCK_HEADER",
     "EVIDENCE_BUNDLE_LEVEL_ENV",
     "EVIDENCE_BUNDLE_ENV",
@@ -61,9 +63,11 @@ __all__ = [
     "EvidenceItem",
     "evidence_bundle_enabled",
     "evidence_bundle_level",
+    "extract_claim_provision_links",
     "minify_evidence_block",
     "parse_evidence_block",
     "provision_of",
+    "required_claim_provisions",
 ]
 
 EVIDENCE_BUNDLE_ENV: Final = "REGENOLD_EVIDENCE_BUNDLE"
@@ -197,6 +201,17 @@ class EvidenceItem:
 
 
 @dataclass(frozen=True)
+class ClaimProvisionLink:
+    """Typed link between an answer sentence (claim) and its supporting provisions."""
+
+    sentence_index: int
+    claim_text: str
+    provisions: tuple[str, ...]
+    source_ids: tuple[str, ...]
+    required: bool
+
+
+@dataclass(frozen=True)
 class EvidenceBundle:
     """Typed projection of the evidence block. ``render`` is byte-identical."""
 
@@ -257,6 +272,14 @@ class EvidenceBundle:
         if not drop:
             return self.raw
         return "\n".join(line for i, line in enumerate(self.lines) if i not in drop)
+
+    def claim_links(
+        self, answer_text: str, declared_refs: Sequence[str] = ()
+    ) -> tuple[ClaimProvisionLink, ...]:
+        """Extract typed claim-to-provision links for ``answer_text`` against this bundle."""
+        return extract_claim_provision_links(
+            answer_text, bundle=self, declared_refs=declared_refs
+        )
 
 
 def _redundant_item_lines(items: tuple[EvidenceItem, ...]) -> set[int]:
@@ -400,3 +423,144 @@ def minify_evidence_block(text: str, level: int | None = None) -> str:
         return text
     lvl = evidence_bundle_level() if level is None else level
     return parse_evidence_block(text).minified(level=lvl)
+
+
+_CLAIM_SENTENCE_SPLIT_RE: Final = re.compile(
+    r"(?<!\bArt)(?<!\bArts)(?<!\bpara)(?<!\bparas)(?<!\bcf)(?<!\be\.g)(?<!\bi\.e)"
+    r"(?<=[.!?])\s+(?=[A-Z0-9(\"'])"
+)
+
+_CLAIM_CITATION_RE: Final = re.compile(
+    r"\b(?P<kind>Articles?|Arts?\.?|Annex)\s+"
+    r"(?P<base>\d{1,3}|[IVXLCDM]{1,7})"
+    r"(?P<tail>(?:\.[0-9a-zA-Z]+|\([0-9a-zA-Z]+\))*)",
+    re.IGNORECASE,
+)
+
+
+def _canonical_claim_ref(kind_raw: str, base_raw: str, tail_raw: str) -> str | None:
+    kind = "Annex" if kind_raw.lower().startswith("annex") else "Article"
+    base = base_raw.strip()
+    if kind == "Annex":
+        if base.isdigit():
+            return None
+        base = base.upper()
+    else:
+        if not base.isdigit():
+            return None
+        base = str(int(base))
+    parts = re.findall(r"[0-9a-zA-Z]+", tail_raw or "")
+    suffix = "".join(f".{p.lower()}" for p in parts)
+    return f"{kind} {base}{suffix}"
+
+
+def _normalise_declared_ref(ref: str) -> str | None:
+    m = _CLAIM_CITATION_RE.search(str(ref or "").strip())
+    if not m:
+        return None
+    return _canonical_claim_ref(m.group("kind"), m.group("base"), m.group("tail") or "")
+
+
+def _ref_head_key(ref: str) -> str:
+    return ref.split(".", 1)[0]
+
+
+def extract_claim_provision_links(
+    answer_text: str,
+    bundle: EvidenceBundle | None = None,
+    declared_refs: Sequence[str] = (),
+) -> tuple[ClaimProvisionLink, ...]:
+    """Build typed claim-to-provision links for each sentence of ``answer_text``.
+
+    Preserves the relationship between individual answer sentences and the
+    statutory coordinates (and ``EvidenceItem.source_id`` entries when ``bundle``
+    is provided) that ground them, so downstream finalization passes (normaliser,
+    reference budget cut, leaf collapse, and grain deepener) can verify which
+    claims and citations are load-bearing.
+    """
+    text = (answer_text or "").strip()
+    if not text:
+        return ()
+
+    declared_norm: set[str] = set()
+    declared_heads: set[str] = set()
+    for d in declared_refs or ():
+        nd = _normalise_declared_ref(d)
+        if nd:
+            declared_norm.add(nd)
+            declared_heads.add(_ref_head_key(nd))
+
+    citable_by_grain: dict[str, list[str]] = {}
+    citable_by_head: dict[str, list[str]] = {}
+    if bundle is not None:
+        for item in bundle.items:
+            if item.context_only:
+                continue
+            gk = _grain_key(item.source_id)
+            if not gk:
+                continue
+            citable_by_grain.setdefault(gk, []).append(item.source_id)
+            hk = _ref_head_key(gk)
+            citable_by_head.setdefault(hk, []).append(item.source_id)
+
+    raw_sentences = [
+        s.strip() for s in _CLAIM_SENTENCE_SPLIT_RE.split(text) if s and s.strip()
+    ]
+    links: list[ClaimProvisionLink] = []
+    for idx, sent in enumerate(raw_sentences):
+        provs: list[str] = []
+        seen_provs: set[str] = set()
+        for m in _CLAIM_CITATION_RE.finditer(sent):
+            cref = _canonical_claim_ref(
+                m.group("kind"), m.group("base"), m.group("tail") or ""
+            )
+            if cref and cref not in seen_provs:
+                seen_provs.add(cref)
+                provs.append(cref)
+
+        sids: list[str] = []
+        seen_sids: set[str] = set()
+        for p in provs:
+            matched = citable_by_grain.get(p) or citable_by_head.get(_ref_head_key(p)) or []
+            for sid in matched:
+                if sid not in seen_sids:
+                    seen_sids.add(sid)
+                    sids.append(sid)
+
+        is_required = bool(provs) and (
+            not declared_heads
+            or any(
+                p in declared_norm or _ref_head_key(p) in declared_heads
+                for p in provs
+            )
+        )
+        links.append(
+            ClaimProvisionLink(
+                sentence_index=idx,
+                claim_text=sent,
+                provisions=tuple(provs),
+                source_ids=tuple(sids),
+                required=is_required,
+            )
+        )
+    return tuple(links)
+
+
+def required_claim_provisions(
+    answer_text: str,
+    bundle: EvidenceBundle | None = None,
+    declared_refs: Sequence[str] = (),
+) -> tuple[str, ...]:
+    """Return ordered, deduplicated canonical provisions required by ``answer_text``."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for link in extract_claim_provision_links(
+        answer_text, bundle=bundle, declared_refs=declared_refs
+    ):
+        if not link.required:
+            continue
+        for p in link.provisions:
+            if p not in seen:
+                seen.add(p)
+                out.append(p)
+    return tuple(out)

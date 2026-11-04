@@ -1,0 +1,154 @@
+{
+  "kind": "synthetic_instrument_diagnostics_not_performance_evaluation",
+  "public_commit": "033e98fdfb6befc0be442c2d26f9851882d9cd80",
+  "local_commit": "5a64d8965da6f723704e21ca2f0ecf22c19768d0",
+  "file_sha256": {
+    "public_ref_scoring": "0875017a9f046030e485aaa610a6e621bc7999b839b2e380987dadc43412dd31",
+    "public_summary": "14060b1ab63b9b050abc308868080644e6e5f3fdbe1bdbf7d3128df055a99965",
+    "local_rubric": "3ad5b18dae935ccb1a794f7ccd6226adce3a8a3e697b277d7ee456b0ba4c5fb8",
+    "local_paired_ab": "168f69591e33d60528040c5f2abc7123212fed1538ae1244ccfd87beabf274f3"
+  },
+  "reference_cases": [
+    {
+      "case": "first_sublevel_not_full_grain",
+      "found": [
+        "Article 13.3.c"
+      ],
+      "expected": [
+        "Article 13.3.b"
+      ],
+      "local_strict_recall": 0.0,
+      "public_strict_recall": 1.0,
+      "local_reference_conciseness": 1.0,
+      "public_reference_conciseness": 1.0
+    },
+    {
+      "case": "wrong_reference_same_count",
+      "found": [
+        "Article 7.1"
+      ],
+      "expected": [
+        "Article 6.1"
+      ],
+      "local_strict_recall": 0.0,
+      "public_strict_recall": 0.0,
+      "local_reference_conciseness": 1.0,
+      "public_reference_conciseness": 0.5
+    },
+    {
+      "case": "parent_is_exempt_extra",
+      "found": [
+        "Annex IV",
+        "Annex IV.1"
+      ],
+      "expected": [
+        "Annex IV.1"
+      ],
+      "local_strict_recall": 1.0,
+      "public_strict_recall": 1.0,
+      "local_reference_conciseness": 0.5,
+      "public_reference_conciseness": 1.0
+    },
+    {
+      "case": "missing_gold_and_unrelated_extra",
+      "found": [
+        "Article 6.2",
+        "Article 7"
+      ],
+      "expected": [
+        "Article 6.2",
+        "Article 8"
+      ],
+      "local_strict_recall": 0.5,
+      "public_strict_recall": 0.5,
+      "local_reference_conciseness": 1.0,
+      "public_reference_conciseness": 0.6666666666666666
+    },
+    {
+      "case": "unannotated_references",
+      "found": [
+        "Article 6"
+      ],
+      "expected": [],
+      "local_strict_recall": null,
+      "public_strict_recall": null,
+      "local_reference_conciseness": null,
+      "public_reference_conciseness": null
+    }
+  ],
+  "answer_conciseness_ranking_reversal": {
+    "reference": "a b c d",
+    "arms": {
+      "A": {
+        "text": "international international",
+        "local_chars": 0.25925925925925924,
+        "published_words": 1.0
+      },
+      "B": {
+        "text": "a b c d e f",
+        "local_chars": 0.6363636363636364,
+        "published_words": 0.6666666666666666
+      }
+    }
+  },
+  "loose_correctness_ranking_reversal": {
+    "criteria_a": [
+      [
+        false
+      ],
+      [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    ],
+    "criteria_b": [
+      [
+        true
+      ],
+      [
+        true,
+        true,
+        true,
+        false,
+        false
+      ]
+    ],
+    "paired_ab_macro_delta_pp": 30.0,
+    "published_micro_delta_pp": -16.666666666666675
+  },
+  "public_incomplete_repeat_coverage": {
+    "synthetic_rows": 2,
+    "complete_3_repeats_each_strict_pct": 50.0,
+    "same_failure_with_only_1_repeat_strict_pct": 83.33333333333333,
+    "interpretation": "Summary input-integrity defect; no evidence published runs were incomplete."
+  },
+  "exact_two_sided_sign_test_power_examples": {
+    "alpha": 0.05,
+    "assumptions": "Independent discordant pairs; conditional branch-win probability 0.65; fixed pair count.",
+    "examples": [
+      {
+        "discordant_pairs": 30,
+        "power_at_conditional_win_probability_0_65": 0.3576410460504563
+      },
+      {
+        "discordant_pairs": 60,
+        "power_at_conditional_win_probability_0_65": 0.5590342871632596
+      },
+      {
+        "discordant_pairs": 90,
+        "power_at_conditional_win_probability_0_65": 0.8122880847231104
+      },
+      {
+        "discordant_pairs": 100,
+        "power_at_conditional_win_probability_0_65": 0.8275851009341131
+      },
+      {
+        "discordant_pairs": 120,
+        "power_at_conditional_win_probability_0_65": 0.892428618525588
+      }
+    ]
+  }
+}

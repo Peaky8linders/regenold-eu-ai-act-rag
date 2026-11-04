@@ -14,7 +14,28 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Iterable, Sequence
-from typing import Any
+from statistics import fmean
+from typing import Any, Final
+
+PROFILE_R391_REPORT: Final = "r391_report"
+PROFILE_PUBLISHED_2026: Final = "published_2026"
+RUBRIC_PROFILES: Final = (PROFILE_R391_REPORT, PROFILE_PUBLISHED_2026)
+
+PUBLISHED_REFERENCE_RE = re.compile(
+    r"^(?P<kind>Article|Annex)\s+(?P<base>[^\s.]+)(?:\.(?P<sub>[^\s.]+))?(?:\.[^\s.]+)*$",
+    flags=re.IGNORECASE,
+)
+
+PUBLISHED_LABELS: Final = (
+    "Answer correctness (loose)",
+    "Answer correctness (strict)",
+    "Answer conciseness",
+    "Reference correctness (loose)",
+    "Reference correctness (strict)",
+    "Reference conciseness",
+    "Regulatory tone",
+    "Response speed",
+)
 
 # -- reference coordinate normalisation --------------------------------------
 
@@ -203,6 +224,125 @@ def reference_conciseness(
     return min(1.0, len(exp) / len(prov))
 
 
+def _normalize_published_reference(reference: str, *, keep_sublevel: bool) -> str:
+    """Published first-sublevel reference normalizer from ``src/ref_scoring.py``."""
+    reference = reference.strip().lower()
+    match = PUBLISHED_REFERENCE_RE.match(reference)
+    if not match:
+        return reference
+
+    normalized = f"{match.group('kind').lower()} {match.group('base').lower()}"
+    sublevel = match.group("sub")
+    if keep_sublevel and sublevel:
+        normalized += f".{sublevel.lower()}"
+    return normalized
+
+
+def compute_published_ref_scores(
+    found: Sequence[str], expected: Sequence[str]
+) -> dict[str, float | None]:
+    """Exact reference-scoring implementation from released ``src/ref_scoring.py``."""
+    found_refs = [ref.strip().lower() for ref in (found or []) if ref and ref.strip()]
+    expected_refs = [
+        ref.strip().lower() for ref in (expected or []) if ref and ref.strip()
+    ]
+
+    loose_expected = [
+        _normalize_published_reference(ref, keep_sublevel=False)
+        for ref in expected_refs
+    ]
+    loose_found = [
+        _normalize_published_reference(ref, keep_sublevel=False) for ref in found_refs
+    ]
+
+    strict_expected = [
+        _normalize_published_reference(ref, keep_sublevel=True)
+        for ref in expected_refs
+    ]
+    strict_found = [
+        _normalize_published_reference(ref, keep_sublevel=True) for ref in found_refs
+    ]
+
+    loose_expected_set = set(loose_expected)
+    loose_found_set = set(loose_found)
+    strict_expected_set = set(strict_expected)
+    strict_found_set = set(strict_found)
+
+    result: dict[str, float | None] = {}
+    if loose_expected_set:
+        result["loose_found_pct"] = len(
+            loose_expected_set.intersection(loose_found_set)
+        ) / len(loose_expected_set)
+        result["loose_extra_pct"] = len(
+            loose_found_set - loose_expected_set
+        ) / len(loose_expected_set)
+    else:
+        result["loose_found_pct"] = None
+        result["loose_extra_pct"] = None
+
+    if strict_expected_set:
+        matched_expected = strict_expected_set.intersection(strict_found_set)
+        matched_found = set(matched_expected)
+
+        # A specific paragraph satisfies an expected top-level Article/Annex.
+        # Consume one such candidate reference; any siblings remain extras.
+        for expected_ref in sorted(strict_expected_set - matched_expected):
+            if expected_ref != _normalize_published_reference(
+                expected_ref, keep_sublevel=False
+            ):
+                continue
+            for found_ref in sorted(strict_found_set - matched_found):
+                if (
+                    _normalize_published_reference(found_ref, keep_sublevel=False)
+                    == expected_ref
+                ):
+                    matched_expected.add(expected_ref)
+                    matched_found.add(found_ref)
+                    break
+
+        result["strict_found_pct"] = len(matched_expected) / len(strict_expected_set)
+        raw_extra = strict_found_set - matched_found
+        # Exempt only a top-level parent of an expected sublevel.
+        raw_extra = {
+            ref
+            for ref in raw_extra
+            if not (
+                ref == _normalize_published_reference(ref, keep_sublevel=False)
+                and ref in loose_expected_set
+            )
+        }
+        result["strict_extra_pct"] = len(raw_extra) / len(strict_expected_set)
+    else:
+        result["strict_found_pct"] = None
+        result["strict_extra_pct"] = None
+
+    return result
+
+
+def reference_correctness_loose_published(
+    pred_refs: Sequence[str], expected_refs: Sequence[str]
+) -> float | None:
+    """Published loose reference recall from ``src/ref_scoring.py``."""
+    return compute_published_ref_scores(pred_refs, expected_refs)["loose_found_pct"]
+
+
+def reference_correctness_strict_published(
+    pred_refs: Sequence[str], expected_refs: Sequence[str]
+) -> float | None:
+    """Published first-sublevel strict reference recall from ``src/ref_scoring.py``."""
+    return compute_published_ref_scores(pred_refs, expected_refs)["strict_found_pct"]
+
+
+def reference_conciseness_published(
+    pred_refs: Sequence[str], expected_refs: Sequence[str]
+) -> float | None:
+    """Published reference conciseness ``1 / (1 + strict_extra_pct)``."""
+    extra = compute_published_ref_scores(pred_refs, expected_refs)["strict_extra_pct"]
+    if extra is None:
+        return None
+    return 1.0 / (1.0 + extra)
+
+
 # -- axis 3: answer conciseness ----------------------------------------------
 
 
@@ -271,6 +411,17 @@ def answer_conciseness(answer: str, reference_answer: str) -> float | None:
     if c == 0:
         return 0.0
     return min(1.0, len(reference_answer) / c)
+
+
+def answer_conciseness_published(answer: str, reference_answer: str) -> float | None:
+    """Published word-count answer conciseness ``min(1, |ref_words| / |ans_words|)``."""
+    ref_words = (reference_answer or "").split()
+    if not ref_words:
+        return None
+    ans_words = (answer or "").split()
+    if not ans_words:
+        return 0.0
+    return min(1.0, len(ref_words) / len(ans_words))
 
 
 # -- axes 1 & 2: answer correctness ------------------------------------------
@@ -360,8 +511,18 @@ def _mean(xs: Sequence[float]) -> float:
     return sum(xs) / len(xs) if xs else 0.0
 
 
-def score_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    """Score a captured arm.
+def score_rows(
+    rows: Sequence[dict[str, Any]],
+    *,
+    profile: str = PROFILE_R391_REPORT,
+) -> dict[str, Any]:
+    """Score a captured arm under a versioned benchmark profile.
+
+    ``profile="r391_report"`` (default) uses the R388/R391 formulas recovered from
+    the 2026-08-25 report. ``profile="published_2026"`` uses the exact formulas
+    from the released ``eu-ai-act-benchmark-2026`` repository (whitespace-word
+    answer conciseness, first-sublevel strict reference recall, and
+    parent-exempt excess-reference conciseness ``1 / (1 + strict_extra_pct)``).
 
     Each row is a dict with:
 
@@ -378,24 +539,39 @@ def score_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     report's own rule: "questions without annotated expected references are
     excluded".
     """
+    if profile not in RUBRIC_PROFILES:
+        raise ValueError(
+            f"Unknown rubric profile {profile!r}; expected one of {RUBRIC_PROFILES}"
+        )
     crit = [list(r.get("criteria") or []) for r in rows]
 
+    if profile == PROFILE_PUBLISHED_2026:
+        ac_fn = answer_conciseness_published
+        rl_fn = reference_correctness_loose_published
+        rs_fn = reference_correctness_strict_published
+        rc_fn = reference_conciseness_published
+    else:
+        ac_fn = answer_conciseness
+        rl_fn = reference_correctness_loose
+        rs_fn = reference_correctness_strict
+        rc_fn = reference_conciseness
+
     ac = [
-        answer_conciseness(r.get("answer", ""), r.get("reference_answer", ""))
+        ac_fn(r.get("answer", ""), r.get("reference_answer", ""))
         for r in rows
     ]
     ac = [v for v in ac if v is not None]
 
     rl = [
-        reference_correctness_loose(r.get("references") or [], r.get("expected_refs") or [])
+        rl_fn(r.get("references") or [], r.get("expected_refs") or [])
         for r in rows
     ]
     rs = [
-        reference_correctness_strict(r.get("references") or [], r.get("expected_refs") or [])
+        rs_fn(r.get("references") or [], r.get("expected_refs") or [])
         for r in rows
     ]
     rc = [
-        reference_conciseness(r.get("references") or [], r.get("expected_refs") or [])
+        rc_fn(r.get("references") or [], r.get("expected_refs") or [])
         for r in rows
     ]
     rl = [v for v in rl if v is not None]
@@ -416,6 +592,7 @@ def score_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     out["overall"] = round(overall([axes[k] for k in AXIS_ORDER]) * 100.0, 4)
     out["n"] = len(rows)
     out["n_ref_scored"] = len(rl)
+    out["profile"] = profile
 
     # Auditable alternatives and diagnostics.  None of these enter ``overall``.
     macro = [sum(1 for c in r if c) / len(r) for r in crit if r]
@@ -423,6 +600,12 @@ def score_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     out["_mean_answer_chars"] = round(_mean([len(r.get("answer") or "") for r in rows]), 1)
     out["_mean_reference_chars"] = round(
         _mean([len(r.get("reference_answer") or "") for r in rows]), 1
+    )
+    out["_mean_answer_words"] = round(
+        _mean([len((r.get("answer") or "").split()) for r in rows]), 1
+    )
+    out["_mean_reference_words"] = round(
+        _mean([len((r.get("reference_answer") or "").split()) for r in rows]), 1
     )
     out["_mean_refs_per_row"] = round(
         _mean([len(_clean(r.get("references") or [])) for r in rows]), 3
@@ -433,3 +616,224 @@ def score_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     )
     out["_mean_latency_s"] = round(_mean([float(r.get("latency_s") or 0.0) for r in rows]), 3)
     return out
+
+
+def _mean_or_none(values: Sequence[float]) -> float | None:
+    return fmean(values) if values else None
+
+
+def _published_overall_score(values: Sequence[float | None]) -> float | None:
+    available = [float(value) for value in values if value is not None]
+    if not available:
+        return None
+    if any(v <= 0.0 for v in available):
+        return 0.0
+    return math.exp(fmean(math.log(value) for value in available))
+
+
+def _validate_published_entries(entries: Sequence[dict[str, Any]], runs: int) -> None:
+    """Reject missing repeats or malformed criterion lists before summarizing."""
+    for idx, entry in enumerate(entries):
+        jc = entry.get("judgements_correctness")
+        jt = entry.get("judgements_tone")
+        if not isinstance(jc, list) or not isinstance(jt, list):
+            raise ValueError(
+                f"Entry {idx} is missing judgements_correctness or judgements_tone list"
+            )
+        if len(jc) != runs or len(jt) != runs:
+            raise ValueError(
+                f"Entry {idx} has uneven repeat coverage: "
+                f"len(judgements_correctness)={len(jc)}, len(judgements_tone)={len(jt)}, "
+                f"expected={runs}"
+            )
+        expected_n: int | None = None
+        if isinstance(entry.get("criteria_count"), int):
+            expected_n = int(entry["criteria_count"])
+        elif isinstance(entry.get("criteria"), list) and entry["criteria"]:
+            expected_n = len(entry["criteria"])
+        for r_idx, j_run in enumerate(jc):
+            if not isinstance(j_run, dict) or not isinstance(j_run.get("criteria"), list):
+                raise ValueError(
+                    f"Entry {idx} repeat {r_idx} is missing a 'criteria' list"
+                )
+            c_list = j_run["criteria"]
+            if not c_list:
+                raise ValueError(
+                    f"Entry {idx} repeat {r_idx} has an empty 'criteria' list"
+                )
+            if expected_n is None:
+                expected_n = len(c_list)
+            elif len(c_list) != expected_n:
+                raise ValueError(
+                    f"Entry {idx} repeat {r_idx} has {len(c_list)} criteria; "
+                    f"expected {expected_n}"
+                )
+            for c_idx, item in enumerate(c_list):
+                if not isinstance(item, dict) or not isinstance(item.get("passed"), bool):
+                    raise ValueError(
+                        f"Entry {idx} repeat {r_idx} criterion {c_idx} lacks boolean 'passed'"
+                    )
+        for r_idx, t_run in enumerate(jt):
+            if (
+                not isinstance(t_run, dict)
+                or not isinstance(t_run.get("appropriateness_passed"), bool)
+                or not isinstance(t_run.get("clarity_passed"), bool)
+            ):
+                raise ValueError(
+                    f"Entry {idx} repeat {r_idx} tone judgement lacks boolean "
+                    "'appropriateness_passed'/'clarity_passed'"
+                )
+
+
+def compute_published_run_metrics(
+    entries: Sequence[dict[str, Any]], run_index: int
+) -> list[float | None]:
+    """Compute the 8 benchmark metrics for one judge repeat index (0-100 scale).
+
+    Mirrors ``src/summarize_results.py:compute_run_metrics`` from the released
+    benchmark repository, while also accepting rows carrying ``references``/
+    ``expected_refs`` or ``answer``/``reference_answer`` if pre-computed
+    ``strict_extra_pct`` / ``answer_conciseness_score`` keys are absent.
+    """
+    criteria: list[float] = []
+    strict: list[float] = []
+    tone: list[float] = []
+    for entry in entries:
+        judgements = entry.get("judgements_correctness") or []
+        if run_index < len(judgements):
+            flags = [
+                bool(criterion["passed"])
+                for criterion in (judgements[run_index].get("criteria") or [])
+            ]
+            if flags:
+                criteria.extend(100.0 * flag for flag in flags)
+                strict.append(100.0 * all(flags))
+        t_judgements = entry.get("judgements_tone") or []
+        if run_index < len(t_judgements):
+            judgement = t_judgements[run_index]
+            tone.append(
+                100.0
+                * bool(
+                    judgement.get("appropriateness_passed")
+                    and judgement.get("clarity_passed")
+                )
+            )
+
+    ans_conc_vals: list[float] = []
+    loose_found_vals: list[float] = []
+    strict_found_vals: list[float] = []
+    ref_conc_vals: list[float] = []
+    speed_vals: list[float] = []
+
+    for entry in entries:
+        if entry.get("answer_conciseness_score") is not None:
+            ans_conc_vals.append(100.0 / max(1.0, float(entry["answer_conciseness_score"])))
+        elif "answer" in entry and "reference_answer" in entry:
+            v = answer_conciseness_published(
+                entry.get("answer", ""), entry.get("reference_answer", "")
+            )
+            if v is not None:
+                ans_conc_vals.append(100.0 * v)
+
+        if (
+            "loose_found_pct" in entry
+            or "strict_found_pct" in entry
+            or "strict_extra_pct" in entry
+        ):
+            lf = entry.get("loose_found_pct")
+            sf = entry.get("strict_found_pct")
+            se = entry.get("strict_extra_pct")
+        elif "references" in entry or "expected_refs" in entry:
+            ref_scores = compute_published_ref_scores(
+                entry.get("references") or [], entry.get("expected_refs") or []
+            )
+            lf = ref_scores["loose_found_pct"]
+            sf = ref_scores["strict_found_pct"]
+            se = ref_scores["strict_extra_pct"]
+        else:
+            lf = sf = se = None
+
+        if lf is not None:
+            loose_found_vals.append(100.0 * float(lf))
+        if sf is not None:
+            strict_found_vals.append(100.0 * float(sf))
+        if se is not None:
+            ref_conc_vals.append(100.0 / (1.0 + float(se)))
+
+        lat = entry.get("latency_seconds", entry.get("latency_s"))
+        if lat is not None:
+            speed_vals.append(max(0.0, 100.0 - float(lat)))
+
+    return [
+        _mean_or_none(criteria),
+        _mean_or_none(strict),
+        _mean_or_none(ans_conc_vals),
+        _mean_or_none(loose_found_vals),
+        _mean_or_none(strict_found_vals),
+        _mean_or_none(ref_conc_vals),
+        _mean_or_none(tone),
+        _mean_or_none(speed_vals),
+    ]
+
+
+def summarize_published_runs(
+    entries: Sequence[dict[str, Any]],
+    *,
+    strict_coverage: bool = True,
+) -> dict[str, Any]:
+    """Summarize multi-run benchmark entries using the paper's per-run aggregation.
+
+    Computes each metric per repeat run first, then aggregates ``mean``, ``min``,
+    and ``max`` across runs (matching ``src/summarize_results.py:summarize``),
+    rather than majority-voting criteria per question before scoring.
+
+    When ``strict_coverage=True`` (default), validates that every row has the
+    same number of correctness and tone judge repeats and that every repeat
+    contains a complete, non-empty boolean criteria list.
+    """
+    if not entries:
+        raise ValueError("The result file is empty")
+    runs = max(
+        max(
+            len(entry.get("judgements_correctness") or []),
+            len(entry.get("judgements_tone") or []),
+        )
+        for entry in entries
+    )
+    if runs < 1:
+        raise ValueError("The result file contains no judge runs")
+    if strict_coverage:
+        _validate_published_entries(entries, runs)
+
+    per_run = [compute_published_run_metrics(entries, index) for index in range(runs)]
+    metrics: list[dict[str, float | None]] = []
+    for index in range(len(PUBLISHED_LABELS)):
+        values = [row[index] for row in per_run if row[index] is not None]
+        metrics.append(
+            {
+                "mean": _mean_or_none(values),
+                "min": min(values) if values else None,
+                "max": max(values) if values else None,
+            }
+        )
+    overall_runs = [_published_overall_score(row) for row in per_run]
+    overall_valid = [score for score in overall_runs if score is not None]
+    overall_summary = {
+        "mean": _published_overall_score([metric["mean"] for metric in metrics]),
+        "min": min(overall_valid) if overall_valid else None,
+        "max": max(overall_valid) if overall_valid else None,
+    }
+    return {
+        "rows": len(entries),
+        "judge_runs": runs,
+        "metrics": dict(zip(PUBLISHED_LABELS, metrics)),
+        "by_axis": dict(zip(AXIS_ORDER, metrics)),
+        "overall": overall_summary,
+        "per_run": [
+            {
+                **dict(zip(AXIS_ORDER, row)),
+                "overall": overall_runs[idx],
+            }
+            for idx, row in enumerate(per_run)
+        ],
+    }

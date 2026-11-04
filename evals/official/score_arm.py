@@ -144,12 +144,32 @@ def load_cache(cache_path: Path | None = None) -> dict[str, dict]:
 def _judge_basis_sha(row: dict) -> str:
     """Hash of what a verdict depends on besides the answer and the judge.
 
-    The criteria text AND the refs the judge prompt is grounded on, taken with
-    the same expression ``judge._provisions_for`` receives.
+    Includes the question text, the criteria text, the grounding references,
+    the rendered verbatim statutory provisions (``official_judge._provisions_for``),
+    and the judge prompt templates so any change to question, criteria,
+    statutory evidence, or prompt wording invalidates stale cache lines.
     """
     grounding = row.get("expected_refs") or row.get("_fallback_refs") or []
-    basis = "\n".join(str(c) for c in (row.get("criteria_text") or []))
+    criteria_list = row.get("criteria_text")
+    if criteria_list is None:
+        raw_c = row.get("criteria") or []
+        criteria_list = raw_c if all(isinstance(c, str) for c in raw_c) else []
+    question = str(row.get("question") or "").strip()
+    provisions = official_judge._provisions_for(grounding)
+    prompts_sha = hashlib.sha256(
+        "\n==\n".join(
+            (
+                official_judge.CORRECTNESS_PROMPT,
+                official_judge.TONE_PROMPT,
+                official_judge.GROUPED_PROMPT,
+            )
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+    basis = "\n".join(str(c) for c in (criteria_list or []))
     basis += "\n--\n" + "\n".join(str(r) for r in grounding)
+    basis += "\n--question--\n" + question
+    basis += "\n--provisions--\n" + provisions
+    basis += "\n--prompts--\n" + prompts_sha
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:12]
 
 

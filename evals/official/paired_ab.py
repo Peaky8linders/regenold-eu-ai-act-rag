@@ -617,6 +617,44 @@ def _bootstrap_ci(
     return lo, hi
 
 
+def _bootstrap_micro_loose_ci(
+    pairs: list[tuple[list[bool], list[bool]]],
+    n: int = 10_000,
+    alpha: float = 0.05,
+    seed: int = 403,
+) -> tuple[float, float]:
+    """Question-cluster percentile bootstrap CI for pooled micro correctness delta (B - A, in pp)."""
+    if not pairs:
+        return (float("nan"), float("nan"))
+    rng = random.Random(seed)
+    m = len(pairs)
+    totals = [
+        (
+            sum(1 for c in ca if c),
+            len(ca),
+            sum(1 for c in cb if c),
+            len(cb),
+        )
+        for ca, cb in pairs
+    ]
+    deltas: list[float] = []
+    for _ in range(n):
+        pa = ta = pb = tb = 0
+        for _i in range(m):
+            ca_pass, ca_tot, cb_pass, cb_tot = totals[rng.randrange(m)]
+            pa += ca_pass
+            ta += ca_tot
+            pb += cb_pass
+            tb += cb_tot
+        rate_a = (pa / ta) if ta else 0.0
+        rate_b = (pb / tb) if tb else 0.0
+        deltas.append((rate_b - rate_a) * 100.0)
+    deltas.sort()
+    lo = deltas[int((alpha / 2) * n)]
+    hi = deltas[int((1 - alpha / 2) * n) - 1]
+    return lo, hi
+
+
 def _mcnemar_exact(b: int, c: int) -> float:
     """Two-sided exact McNemar p-value via the binomial tail."""
     n = b + c
@@ -712,6 +750,7 @@ def compare(
     from evals.official.rubric import (
         answer_conciseness,
         answer_conciseness as _ac,
+        answer_correctness_loose,
     )
 
     ra, rb = _load_rows(a_path), _load_rows(b_path)
@@ -734,20 +773,53 @@ def compare(
             elif vb < va:
                 flips_neg += 1
         lo, hi = _bootstrap_ci(da, seed=seed)
-        # McNemar only makes sense on binary-ish axes; for graded axes the
-        # flip counts are still informative (improvements vs regressions).
-        per_axis[axis] = {
-            "n": len(da),
-            "mean_a": _mean([_row_axis(ra[q], axis) for q in shared
-                             if _row_axis(ra[q], axis) is not None]),
-            "mean_b": _mean([_row_axis(rb[q], axis) for q in shared
-                             if _row_axis(rb[q], axis) is not None]),
-            "delta": _mean(da),
-            "ci95": [lo, hi],
-            "b_better": flips_pos,
-            "a_better": flips_neg,
-            "mcnemar_p": _mcnemar_exact(flips_pos, flips_neg),
-        }
+        macro_mean_a = _mean(
+            [_row_axis(ra[q], axis) for q in shared if _row_axis(ra[q], axis) is not None]
+        )
+        macro_mean_b = _mean(
+            [_row_axis(rb[q], axis) for q in shared if _row_axis(rb[q], axis) is not None]
+        )
+        macro_delta = _mean(da)
+        if axis == "ans_correctness_loose":
+            crit_pairs = [
+                (
+                    [bool(c) for c in (ra[q].get("criteria") or [])],
+                    [bool(c) for c in (rb[q].get("criteria") or [])],
+                )
+                for q in shared
+            ]
+            micro_a = answer_correctness_loose([ca for ca, _ in crit_pairs]) * 100.0
+            micro_b = answer_correctness_loose([cb for _, cb in crit_pairs]) * 100.0
+            micro_lo, micro_hi = _bootstrap_micro_loose_ci(crit_pairs, seed=seed)
+            per_axis[axis] = {
+                "n": len(da),
+                "n_criteria_a": sum(len(ca) for ca, _ in crit_pairs),
+                "n_criteria_b": sum(len(cb) for _, cb in crit_pairs),
+                "mean_a": micro_a,
+                "mean_b": micro_b,
+                "delta": micro_b - micro_a,
+                "ci95": [micro_lo, micro_hi],
+                "macro_mean_a": macro_mean_a,
+                "macro_mean_b": macro_mean_b,
+                "macro_delta": macro_delta,
+                "macro_ci95": [lo, hi],
+                "b_better": flips_pos,
+                "a_better": flips_neg,
+                "mcnemar_p": _mcnemar_exact(flips_pos, flips_neg),
+            }
+        else:
+            # McNemar only makes sense on binary-ish axes; for graded axes the
+            # flip counts are still informative (improvements vs regressions).
+            per_axis[axis] = {
+                "n": len(da),
+                "mean_a": macro_mean_a,
+                "mean_b": macro_mean_b,
+                "delta": macro_delta,
+                "ci95": [lo, hi],
+                "b_better": flips_pos,
+                "a_better": flips_neg,
+                "mcnemar_p": _mcnemar_exact(flips_pos, flips_neg),
+            }
 
     # Gold-drop veto, per row. ``gold_dropped_head`` keeps the all-rows counts
     # it has always carried; the scoped verdict lives in ``veto`` below.
