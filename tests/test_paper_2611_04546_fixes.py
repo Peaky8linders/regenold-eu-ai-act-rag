@@ -21,7 +21,6 @@ import pytest
 
 from app.engines.evidence_bundle import (
     ClaimProvisionLink,
-    extract_claim_provision_links,
     parse_evidence_block,
     required_claim_provisions,
 )
@@ -31,7 +30,6 @@ from evals.official import judge as official_judge
 from evals.official import paired_ab, rubric
 from evals.official import score_arm as sa
 from evals.regenold import hard_preamble as hp
-
 
 # ── 1. Versioned Benchmark Profile & Released Scorer Adapter ───────────────
 
@@ -104,8 +102,10 @@ def test_score_rows_supports_both_profiles_and_rejects_unknown() -> None:
     ]
     r391 = rubric.score_rows(rows)
     pub = rubric.score_rows(rows, profile=rubric.PROFILE_PUBLISHED_2026)
-    assert r391["profile"] == rubric.PROFILE_R391_REPORT
-    assert pub["profile"] == rubric.PROFILE_PUBLISHED_2026
+    # R474: the result dict is written verbatim as ``axes`` and read as numbers by every
+    # consumer, so it must hold NO string (R473 added ``"profile"`` and broke one).
+    for res in (r391, pub):
+        assert all(isinstance(v, int | float) for v in res.values()), res
     assert r391["ans_conciseness"] == 100.0
     assert pub["ans_conciseness"] == 50.0
     assert r391["ref_conciseness"] == 50.0
@@ -261,14 +261,18 @@ def test_ab_judge_rejects_malformed_winner_and_separates_invalids_from_ties() ->
     a = ab_judge.ArmAnswer("Candidate A.", [], 0.0, 200)
     b = ab_judge.ArmAnswer("Candidate B.", [], 0.0, 200)
 
-    banana_caller = lambda _prompt: {"winner": "banana"}
+    def banana_caller(_prompt):
+        return {"winner": "banana"}
+
     assert ab_judge._judge_one_ok(banana_caller, "p") == ("tie", False)
     v, agreed, outcome = ab_judge._pairwise_verdict_outcome(
         {"question": "Q?"}, "correctness", a, b, banana_caller, {}
     )
     assert (v, agreed, outcome) == ("tie", False, "invalid")
 
-    tie_caller = lambda _prompt: {"winner": "tie"}
+    def tie_caller(_prompt):
+        return {"winner": "tie"}
+
     assert ab_judge._judge_one_ok(tie_caller, "p") == ("tie", True)
     v_tie, agreed_tie, outcome_tie = ab_judge._pairwise_verdict_outcome(
         {"question": "Q?"}, "correctness", a, b, tie_caller, {}
@@ -276,7 +280,9 @@ def test_ab_judge_rejects_malformed_winner_and_separates_invalids_from_ties() ->
     assert (v_tie, agreed_tie, outcome_tie) == ("tie", True, "tie")
 
     # Position disagreement: always picks first slot "A" in both orderings.
-    pos_biased_caller = lambda _prompt: {"winner": "A"}
+    def pos_biased_caller(_prompt):
+        return {"winner": "A"}
+
     v_flip, agreed_flip, outcome_flip = ab_judge._pairwise_verdict_outcome(
         {"question": "Q?"}, "correctness", a, b, pos_biased_caller, {}
     )
@@ -314,13 +320,21 @@ def test_gate_exit_code_distinguishes_pass_fail_and_indeterminate() -> None:
         )
         == 1
     )
+    # R474 - a PASS needs evidence the test could have failed on. This case used
+    # n_rows=10 and no decisive-pair counts and expected PASS: the very false green
+    # R398 removed from easyhard_ab (n floor 30; a sign test needs >= 6 decisive pairs).
     assert (
         ab_judge.gate_exit_code(
             {
                 "tier": "live-pairwise",
-                "n_rows": 10,
+                "n_rows": 60,
                 "axes": {
-                    "correctness": {"verdict": "BRANCH wins (sig)", "invalids": 0},
+                    "correctness": {
+                        "verdict": "BRANCH wins (sig)",
+                        "invalids": 0,
+                        "wins_branch": 12,
+                        "wins_baseline": 1,
+                    },
                     "overall": {"verdict": "branch leans (ns)", "invalids": 0},
                 },
             }
@@ -461,6 +475,7 @@ def test_hospital_deployer_paraphrases_preserve_all_five_sentences_and_citations
     question: str,
 ) -> None:
     from fastapi.testclient import TestClient
+
     from app.main import app
 
     client = TestClient(app)

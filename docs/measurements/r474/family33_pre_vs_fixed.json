@@ -1,0 +1,42 @@
+{
+ "pool": 33,
+ "changed": [
+  {
+   "question": "A hospital deploys a high-risk AI system. What are the hospital's obligations?",
+   "label": "_detect_hospital_deployer_inquiry",
+   "answer_changed": false,
+   "refs_changed": true,
+   "sent": [
+    5,
+    5
+   ],
+   "chars": [
+    1217,
+    1217
+   ],
+   "n_refs": [
+    1,
+    5
+   ],
+   "head_relation": "superset",
+   "heads_lost": [],
+   "heads_gained": [
+    "Article 13",
+    "Article 25",
+    "Article 27",
+    "Article 86"
+   ],
+   "old_sentences_kept": true,
+   "refs_pre": [
+    "Article 26.5"
+   ],
+   "refs_deployed": [
+    "Article 26",
+    "Article 27.1",
+    "Article 86",
+    "Article 25",
+    "Article 13"
+   ]
+  }
+ ]
+}

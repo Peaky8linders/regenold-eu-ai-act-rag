@@ -175,6 +175,116 @@ Full record: `docs/measurements/r447/CHECKPOINT.md`.
   A blanket curated skip regressed rg_040's conciseness, so the skip is scoped to this
   one intercept.
 
+## ⛔ R474 — the R473 agent work (Codex analysis, Antigravity implementation), audited by execution
+
+Full record and instruments: `docs/measurements/r474/CHECKPOINT.md` (`pool.py`,
+`route_replay.py`, `compare_replays.py`). Production ran `a119f637` for all of it.
+
+* **Provenance.** Codex wrote the analysis only (`docs/reviews/2026-11-04-*`, three probes) and
+  stopped when asked to implement. Antigravity implemented it (PR #510 `6e713116`, #511
+  `55c77e3a`), merged both **before CI finished** (#510's suite failed three minutes after the
+  merge), killed its own full local run and left no hand-off. The full suite on the deployed commit
+  with the gitignored official data present: **10,170 passed, 0 failed**; CI had skipped 41
+  data-dependent tests (29 of them run with the data), so those had never run against R473.
+* **A mode the resolver accepts but the runner ignores silently runs ANOTHER shape.** R473 added
+  `published` to `hard_preamble.MODES`, but `run_official_batch` tested `preamble == MODE_FIXED`,
+  so `REGENOLD_HARD_PREAMBLE=published` posted the ROLLING pre-R424 conversation under a
+  `published` label with an empty digest (before R473 the value raised: the R422 failure the
+  resolver's docstring names). `_FIXED_SHAPE_DIGESTS` and `_request_shape` now cover every mode, and
+  `test_every_mode_the_resolver_accepts_is_honoured_on_the_wire` (parametrised over `MODES`) fails
+  for a mode that is added but not wired.
+* **R473's collapse-before-budget changed leaves it had no reason to touch.** The defect it fixed
+  is real: the hospital verdict's `Article 26` plus four leaves filled all five budget slots and
+  evicted five declared heads (wire `['Article 26.5']`, now five heads). But it was unconditional,
+  and `hardware_techdoc` (4 declared refs, budget 5, nothing evicted) lost the question-aware
+  `Annex IV.1` to a retrieval-derived `Annex IV.2`: collapsing first lets the head merge with an
+  extra leaf, which displaces the deepener's pick. `_curated_budget_cut` now collapses first only
+  when that keeps MORE declared heads; a tie is the pre-R473 behaviour byte for byte.
+* **An exact paired replay is the instrument for a post-generation change to a curated route.**
+  Curated verdicts skip Stage-2, so the offline route IS what production serves: no sampling
+  variance, no wrapper. 1,733 non-official questions (291 curated) through `beb7aeb9`,
+  `a119f637` and the fix: pre -> deployed changed 11 (hospital 4, hardware 4, AI board 3),
+  pre -> fixed changed 7, **0 heads lost in either**. Each change is therefore head-monotone, which
+  is the quantity hard rule #8 protects, with no gold needed. The ten expert-review questions are
+  byte-identical between production (4 Nov) and the offline route on the deployed build.
+* **`REGENOLD_CURATED_ENUMERATED_HEADS` (default ON, deny-list).** R473's exemption of a curated
+  head declared with 3+ leaves from the grain deepener (`Article 65.5` -> bare `Article 65`) had no
+  switch. It cannot lose a head, but a bare head satisfies no sub-point key, so it can only ever
+  COST Ref. Strict; unmeasured against gold, so it keeps R473's default and gets the switch. It and
+  `REGENOLD_INTERCEPT_LEAF_COLLAPSE` (read at two sites; was missing) are now in `_engine_cache_key`.
+* **`published_2026` is a library, not an entry point.** `score_arm` calls `score_rows` at five sites,
+  none with `profile=`, and nothing outside tests calls `summarize_published_runs`; `paired_ab` always
+  recomputes with the default formulas. A half-wired profile would mix two scorers in one report, so
+  it is deliberately left unwired until `score_arm` -> sidecar -> `paired_ab` thread it together.
+* **The wrapper's OAuth session expired (`Failed to authenticate: OAuth session expired`, wrapper
+  `service-stderr.log`).** `/healthz/llm` reads `primary offline ... bedrock fallback active`, so
+  production Stage-2 is 100 % Bedrock until `login.bat` re-seeds it, and a "validation through the
+  tunnel" run before that measures the fallback. Antigravity's two live captures both say so in
+  their own `llm` field.
+* **Never chain `git stash push`, `git checkout` and `git stash pop` with `;`.** The push failed
+  on a pathspec error, the checkout aborted, and the pop then applied an unrelated backup stash
+  (`wip-repo-a-backup-before-finalize`); 67 files were deleted by timestamp to undo it. Nothing was
+  lost (all 67 are in the stash's untracked commit, which is intact), but `;` does not short-circuit.
+* **R473's pairwise gate could PASS a run that measured nothing.** Executed by two reviewers
+  (13 of 22 mutations of `gate_exit_code` survived the R473 tests): `min_rows=1`, no decisive-pair
+  floor, a check for an `overall` axis that does not exist (`AXES` are correctness / refs /
+  conciseness / tone, so only `correctness` could ever fail), INDETERMINATE that outranked a
+  significant baseline win, and an arm that failed to answer judged as an EMPTY answer (a branch
+  outage read as a regression, a baseline outage as a win; `pairwise_from_answers` silently dropped
+  errored rows, so 10 answered of 40 left n_rows=10). Now: `_MIN_GATE_N=30` (R398's floor),
+  `_MIN_DECISIVE=6` (a two-sided sign test cannot reach p<.05 on fewer; 5-0 gives .0625),
+  `BASELINE wins (sig)` on ANY axis fails (testing four axes raises the false-FAIL rate under the
+  null from ~2 % to ~8 % at 20 decisive pairs; a re-run is cheaper than a missed regression),
+  FAIL outranks the thin-run INDETERMINATE exactly as in `easyhard_ab`, and `capture` (per-arm
+  failure counts, both tools) voids a run above 10 %. Invalid pairs are no longer half a win
+  (`effective_win_rate_b` over judged pairs: a 30 % error rate moved .658 to .592) nor a position
+  flip (`swap_consistency_rate`: 57 % for a judge with no bias). The module global
+  `_LAST_PAIRWISE_OUTCOME` is replaced by `PairVerdict`, a 2-tuple that carries `.outcome`.
+  ⚠ `--enforce-gate` is still OPT-IN: the default `python -m evals.harness.ab_judge` that AGENTS.md
+  names as the merge gate exits 0 on every completed run, `BASELINE wins (sig)` included.
+* **A pooled estimate must be paired over the SAME rows.** R473's micro `ans_correctness_loose`
+  pooled every shared row, so a row one arm's judge never answered entered the other arm only:
+  A `[T,T]`+`[T,F]` vs B `[T,T]`+`[]` read +25 pp where the macro read -25. `compare()` now pools only
+  rows with equal, non-empty criteria and reports `unpaired_dropped` / `n_paired_rows` (the
+  docstring had promised "dropped from both arms" all along).
+* **Never feed one decision rule two estimators.** The committed R440/R447 gate drivers paired
+  `compare()`'s per-sample delta (now micro) with their own pooled per-question estimate (macro): on
+  20 one-criterion rows (A fails, B passes) + 20 five-criterion rows (A 5/5, B 3/5) the same data
+  read SHIP ON, or REFUSE "pooled +30 pp, negative in samples [0, 1, 2]". `paired_ab.macro_axis`
+  gives both halves the pre-R473 reading; a negative-control test shows the contradiction returning.
+* **Never put a string in a dict that is written as `axes`.** `score_rows` gained `"profile"`;
+  `docs/measurements/r423/build_need_report.py` does `{k: float(v) ...}` and raised on any new
+  artifact. The profile is the caller's argument; the result is numeric-only again.
+* **A garbage reply must not become a verdict.** `judge._verdicts_from` sent `satisfied` of `None`,
+  `"banana"`, `2` through `_parse_bool`, which returns False for anything unknown, so it became a
+  criterion FAILURE (R473 fixed this twin in `ab_judge` only); `n=1.5` was truncated to 1. Both are
+  rejected now. NOT changed, decision: a reply with a unique, correctly numbered 1..N PLUS an extra
+  entry is still discarded (and nothing retries it), so a judge that systematically appends one
+  voids the run; the cost is rows scored as unjudged-failures. Accepting a unique superset is safe.
+* **Rejected repetitions are not blended.** The Min-Max block filled a repeat a row's judge rejected
+  from the majority vote, so a "3 repetitions" band could hold a synthetic run; `_per_run_scores`
+  scores only repetitions every row actually has, and says how many it skipped. R473's three per-run
+  rate fields were computed and discarded (not in `_VERDICT_KEYS`, not in the cache write): persisted.
+* **R473 invalidated every stamped judge verdict, silently** (R423 445/445, R461 65/65: 2,000 of
+  4,237 committed cache lines), while sha-less lines (R388-R407) replay UNCHECKED, so the older the
+  line the less it is checked. `_split_cached` now counts and prints both. Not changed, decision:
+  there is still no `--legacy-cache`, and sha-less lines still replay.
+* **The published dialogue trips the anchor extractor and our reconstruction does not.** Its user
+  turns yield `[Context anchors - articles: Annex III; roles: provider; risk tier: high-risk, annex iii]`
+  on every hard request; the R424 `fixed` fixture yields `''` by design, so every `fixed` board was
+  blind to it. Offline (provider `cli`, 12 probe questions) the references under the published
+  dialogue differ from `fixed` on 11 and collapse to a near-constant
+  `[Article 9, Article 10, Annex III, Article 53, Article 14]` on 10. Pinned, not changed; the live
+  Stage-2 effect is unmeasured. `REGENOLD_HARD_PREAMBLE=published` is now runnable end to end, so the
+  paired gate that answers it (published vs fixed, same arm otherwise) needs the wrapper back.
+* **A grader must not be edited after its verdicts are seen.** The appendix's "32 of 32 / 10 of 10"
+  came from a rubric revised after a first pass graded Q74 partial on a byte-identical answer, with a
+  judge cache keyed on the answer text alone (the R409 anti-pattern, rebuilt). See
+  `docs/measurements/r474/CHECKPOINT.md` section 5; the report is not fixed, on purpose.
+* **Evidence a document cites must not be regenerated underneath it.** `pipeline_probe.json` was
+  re-run after the fix (still stamped with the pre-fix commit), so it stopped showing the 5 -> 3
+  defect the audit describes; the pre-fix run is kept as `pipeline_probe_pre_r473.json`.
+
 ## ⛔ R398 — the merge gate itself returned a FALSE GREEN, and the R397 lever was inert
 
 **Executed 2026-09-09.** Two defects in the *instruments*, not in the product. Both are the
@@ -1997,6 +2107,7 @@ the branch arm, at n≥30 per split, before the benchmark window.
 | `REGENOLD_ACT_TERMS_CLAUSE` | **`1`** | R454. When the live question uses a marking term (`mark`, `label`, `watermark`; not `CE marking`), the Stage-2 user message gets an ACT TERMS clause: machine-readable marking is the provider's Article 50(2) duty; a deployer's duty is disclosure (50(3), 50(4)); for an artistic work 50(4) LIMITS the duty to disclosing the content's existence without hampering enjoyment, it does not remove it. Appended after every wholesale user-message replacement; verified on the dispatched bytes (present ON, absent OFF / CE marking / unrelated). Fires on 1 of the official 110 (rg_075, Q74). Prompt-side, so invariant #5 applies; shipped on the operator's instruction. Deny-list; registered in `_engine_cache_key` |
 | `REGENOLD_REF_GRAIN_DEPTH` | `1` | R388 — maximum sub-level depth for grain deepening (1 = paragraph/item level e.g. `Article 13.3`, >1 = sub-points like `13.3.a`). Defaults to `1` as verified by zero-variance replay against the official rubric answer key. Registered in `_engine_cache_key`. |
 | `REGENOLD_WHOLE_HEAD_FLOOR` | **`1`** | R442 floor, gated in R447. Raises the Stage-2 ANSWER SHAPE target to the 650-char no-signal floor when the ask names a bare listed head, nothing is engaged, and the ask is not a NARROW verdict ask (yes/no with no open request in any sentence; "What is Annex X about?", rg_105). R442 shipped it ungated, and it also fired on verdict questions ("Does Article 26 require deployers to keep logs?" 375 → 650). Route replay: 0 answer-shape changes on the official 110; 3 probe rows, all yes/no. Deny-list; `=0` restores R439's proportional target. Registered in `_engine_cache_key` |
+| `REGENOLD_CURATED_ENUMERATED_HEADS` | **`1`** | R473/R474. A curated head declared with 3+ leaves (`Article 26` + 26.1/.2/.5/.6 on the hospital verdict, `Article 65` + 65.3/.4/.5/.7 on the AI-board verdict) is exempt from the R386 grain deepener, so the wire carries the bare head instead of one arbitrary paragraph. Head-invariant by construction (1,733-question replay: 0 heads lost); but a bare head satisfies no sub-point key, so against the deepened paragraph it can only ever COST Ref. Strict. R473 shipped it with no switch; R474 added this one (default = the merged behaviour), registered it in `_engine_cache_key` together with the previously unregistered `REGENOLD_INTERCEPT_LEAF_COLLAPSE`. Deny-list (blank or unexpected keeps it ON). Needs a gold-bearing paired gate before the default is revisited. See § R474 |
 | `REGENOLD_CURATED_KEEP_DECLARED_LEAVES` | **`1`** | R447. For a curated authoritative intercept, R87-C does not re-emit a head whose declared leaves have no dominating member (`_undominated_leaf_heads`). Otherwise, at a compound-role budget of 12, R287 folded those leaves into the manufactured head and the deepener kept one: the Art. 50 information route cited `Article 50.4` alone, and the role route never cited `Article 3.4`. A bare copy of such a head added by another pass (`expand_citations` on scenario shapes) is dropped before R287 while its leaves are listed. Dominated clusters (`Annex III.8` over `8.a`/`8.b`) still fold. A blanket skip cost rg_012 Ref. Conciseness 1.00 → 0.33. Two-arm replay (`docs/measurements/r447/curated_leaves_replay.py`) and a 1,077-variant sweep: every change a win or neutral, 0 on the official 110. Deny-list; registered in `_engine_cache_key` |
 | `REGENOLD_ROLE_DIFFERENCE_SKIP_INTENT_BOOST` | **`1`** | R447b. The provider-vs-deployer curated verdict skips the R66-E Stage-0 intent boost. Live, the classifier labels that definitional contrast `role_obligations` (0.93, anchor `Art. 26`, stable over repeated calls); the boost injected `Article 26` and production shipped `Article 26.5`, the unrequested duty citation the R447 rewrite removed. The classifier does not run offline, so no offline probe or review saw it. A blanket skip for every curated intercept was measured and rejected: rg_040's injected `Article 43` happens to knock `Annex VII.4` off the wire and match its reconstructed gold, so the blanket skip cost that official row Ref. Conciseness 1.00 → 0.50 (`docs/measurements/r447/curated_intent_boost_replay.py`). The detector fires on 0 official and 0 davidath rows. Deny-list; registered in `_engine_cache_key` |
 | `REGENOLD_WIRE_REF_CAP` | `0` (unlimited) | R381 — terminal cap on the emitted reference list, the LAST reference pass. Built to attack the highest-leverage axis (RefConc is `min(1, \|expected\|/\|provided\|)`, a pure COUNT ratio) and **GATED, THEN REJECTED**. Zero-variance simulation over a full live capture of the gold-bearing probe corpus, n=129: cap 5 → gold 37→37 (+0.03 pp), cap 4 → 37→37 (+0.33 pp), **cap 3 → 37→41 FAILS**, cap 2 → 65 FAILS, cap 1 → 113 FAILS. **Every value worth having fails hard rule #8; every value that passes is worth nothing.** ⚠ The verdict REVERSED as n grew — cap=3 read "pass" at n=17/30/34 and fails by 4 at n=129, monotonically worse. Zero-variance removes GENERATION variance, not SAMPLING variance. Kept in the tree at `0`, cache-keyed and tested, so the measurement can be re-run if the evaluator's real expected sets ever land. Malformed value fails OPEN. See § R381 and `docs/reviews/r381-…` |

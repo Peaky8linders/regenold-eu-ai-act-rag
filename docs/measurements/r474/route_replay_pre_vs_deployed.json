@@ -1,0 +1,357 @@
+{
+ "pool": 1733,
+ "changed": [
+  {
+   "question": "A hospital deploys a high-risk AI diagnostic system. What are its obligations as a deployer under the EU AI Act?",
+   "label": "_detect_hospital_deployer_inquiry",
+   "answer_changed": false,
+   "refs_changed": true,
+   "sent": [
+    5,
+    5
+   ],
+   "chars": [
+    1217,
+    1217
+   ],
+   "n_refs": [
+    1,
+    5
+   ],
+   "head_relation": "superset",
+   "heads_lost": [],
+   "heads_gained": [
+    "Article 13",
+    "Article 25",
+    "Article 27",
+    "Article 86"
+   ],
+   "old_sentences_kept": true,
+   "refs_pre": [
+    "Article 26.5"
+   ],
+   "refs_deployed": [
+    "Article 26",
+    "Article 27.1",
+    "Article 86.1",
+    "Article 25.1.c",
+    "Article 13"
+   ]
+  },
+  {
+   "question": "A hospital deploys a high-risk AI system. What are the hospital's obligations?",
+   "label": "_detect_hospital_deployer_inquiry",
+   "answer_changed": false,
+   "refs_changed": true,
+   "sent": [
+    5,
+    5
+   ],
+   "chars": [
+    1217,
+    1217
+   ],
+   "n_refs": [
+    1,
+    5
+   ],
+   "head_relation": "superset",
+   "heads_lost": [],
+   "heads_gained": [
+    "Article 13",
+    "Article 25",
+    "Article 27",
+    "Article 86"
+   ],
+   "old_sentences_kept": true,
+   "refs_pre": [
+    "Article 26.5"
+   ],
+   "refs_deployed": [
+    "Article 26",
+    "Article 27.1",
+    "Article 86",
+    "Article 25",
+    "Article 13"
+   ]
+  },
+  {
+   "question": "A hospital deploys an Annex III system. What obligations must the hospital comply with?",
+   "label": "_detect_hospital_deployer_inquiry",
+   "answer_changed": false,
+   "refs_changed": true,
+   "sent": [
+    5,
+    5
+   ],
+   "chars": [
+    1217,
+    1217
+   ],
+   "n_refs": [
+    1,
+    5
+   ],
+   "head_relation": "superset",
+   "heads_lost": [],
+   "heads_gained": [
+    "Article 13",
+    "Article 25",
+    "Article 27",
+    "Article 86"
+   ],
+   "old_sentences_kept": true,
+   "refs_pre": [
+    "Article 26.5"
+   ],
+   "refs_deployed": [
+    "Article 26",
+    "Article 27.1",
+    "Article 86.1",
+    "Article 25",
+    "Article 13.3"
+   ]
+  },
+  {
+   "question": "Does the technical documentation of a high-risk AI system require specifications regarding the required hardware?",
+   "label": "_detect_hardware_techdoc_inquiry",
+   "answer_changed": false,
+   "refs_changed": true,
+   "sent": [
+    1,
+    1
+   ],
+   "chars": [
+    387,
+    387
+   ],
+   "n_refs": [
+    2,
+    2
+   ],
+   "head_relation": "equal",
+   "heads_lost": [],
+   "heads_gained": [],
+   "old_sentences_kept": true,
+   "refs_pre": [
+    "Article 11",
+    "Annex IV.1"
+   ],
+   "refs_deployed": [
+    "Article 11",
+    "Annex IV.2"
+   ]
+  },
+  {
+   "question": "Does the technical documentation require hardware specifications?",
+   "label": "_detect_hardware_techdoc_inquiry",
+   "answer_changed": false,
+   "refs_changed": true,
+   "sent": [
+    1,
+    1
+   ],
+   "chars": [
+    387,
+    387
+   ],
+   "n_refs": [
+    2,
+    2
+   ],
+   "head_relation": "equal",
+   "heads_lost": [],
+   "heads_gained": [],
+   "old_sentences_kept": true,
+   "refs_pre": [
+    "Article 11",
+    "Annex IV.1"
+   ],
+   "refs_deployed": [
+    "Article 11",
+    "Annex IV.2"
+   ]
+  },
+  {
+   "question": "Does the technical documentation require hardware specs?",
+   "label": "_detect_hardware_techdoc_inquiry",
+   "answer_changed": false,
+   "refs_changed": true,
+   "sent": [
+    1,
+    1
+   ],
+   "chars": [
+    387,
+    387
+   ],
+   "n_refs": [
+    2,
+    2
+   ],
+   "head_relation": "equal",
+   "heads_lost": [],
+   "heads_gained": [],
+   "old_sentences_kept": true,
+   "refs_pre": [
+    "Article 11",
+    "Annex IV.1"
+   ],
+   "refs_deployed": [
+    "Article 11",
+    "Annex IV.2"
+   ]
+  },
+  {
+   "question": "Is information about required hardware part of the technical documentation?",
+   "label": "_detect_hardware_techdoc_inquiry",
+   "answer_changed": false,
+   "refs_changed": true,
+   "sent": [
+    1,
+    1
+   ],
+   "chars": [
+    387,
+    387
+   ],
+   "n_refs": [
+    2,
+    2
+   ],
+   "head_relation": "equal",
+   "heads_lost": [],
+   "heads_gained": [],
+   "old_sentences_kept": true,
+   "refs_pre": [
+    "Article 11",
+    "Annex IV.1"
+   ],
+   "refs_deployed": [
+    "Article 11",
+    "Annex IV.2"
+   ]
+  },
+  {
+   "question": "Regarding the European Artificial Intelligence Board: (1) Who designates its members? (2) How long is the term and how many times is it renewable? (3) must members represent stakeholder interests or act impartially? (4) what voting threshold adopts the Board's rules of procedure?",
+   "label": "_detect_ai_board_governance_inquiry",
+   "answer_changed": false,
+   "refs_changed": true,
+   "sent": [
+    3,
+    3
+   ],
+   "chars": [
+    508,
+    508
+   ],
+   "n_refs": [
+    1,
+    1
+   ],
+   "head_relation": "equal",
+   "heads_lost": [],
+   "heads_gained": [],
+   "old_sentences_kept": true,
+   "refs_pre": [
+    "Article 65.5"
+   ],
+   "refs_deployed": [
+    "Article 65"
+   ]
+  },
+  {
+   "question": "Regarding the European Artificial Intelligence Board: how long is the term, must members act impartially, and what voting threshold adopts the rules of procedure?",
+   "label": "_detect_ai_board_governance_inquiry",
+   "answer_changed": false,
+   "refs_changed": true,
+   "sent": [
+    3,
+    3
+   ],
+   "chars": [
+    508,
+    508
+   ],
+   "n_refs": [
+    1,
+    1
+   ],
+   "head_relation": "equal",
+   "heads_lost": [],
+   "heads_gained": [],
+   "old_sentences_kept": true,
+   "refs_pre": [
+    "Article 65.5"
+   ],
+   "refs_deployed": [
+    "Article 65"
+   ]
+  },
+  {
+   "question": "Regarding the European Artificial Intelligence Board: who designates its members, how long is the term, and how many times is it renewable?",
+   "label": "_detect_ai_board_governance_inquiry",
+   "answer_changed": false,
+   "refs_changed": true,
+   "sent": [
+    3,
+    3
+   ],
+   "chars": [
+    508,
+    508
+   ],
+   "n_refs": [
+    1,
+    1
+   ],
+   "head_relation": "equal",
+   "heads_lost": [],
+   "heads_gained": [],
+   "old_sentences_kept": true,
+   "refs_pre": [
+    "Article 65.5"
+   ],
+   "refs_deployed": [
+    "Article 65"
+   ]
+  },
+  {
+   "question": "What obligations does the hospital have as a deployer of a high-risk AI system?",
+   "label": "_detect_hospital_deployer_inquiry",
+   "answer_changed": true,
+   "refs_changed": true,
+   "sent": [
+    3,
+    5
+   ],
+   "chars": [
+    738,
+    1217
+   ],
+   "n_refs": [
+    1,
+    5
+   ],
+   "head_relation": "superset",
+   "heads_lost": [],
+   "heads_gained": [
+    "Article 13",
+    "Article 25",
+    "Article 27",
+    "Article 86"
+   ],
+   "old_sentences_kept": true,
+   "refs_pre": [
+    "Article 26.5"
+   ],
+   "refs_deployed": [
+    "Article 26",
+    "Article 27.1",
+    "Article 86.1",
+    "Article 25.1.c",
+    "Article 13"
+   ]
+  }
+ ]
+}

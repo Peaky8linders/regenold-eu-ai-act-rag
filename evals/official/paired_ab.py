@@ -667,6 +667,31 @@ def _mcnemar_exact(b: int, c: int) -> float:
     return min(1.0, 2 * p)
 
 
+def macro_axis(stats: dict) -> dict:
+    """An axis row under its pre-R473 per-question (MACRO) reading.
+
+    R473 made ``compare()`` report ``ans_correctness_loose`` as the benchmark's
+    pooled-over-criteria (micro) estimate and kept the old per-question mean under
+    ``macro_*``. A decision rule written against the old numbers (the R440 / R447
+    gate drivers pair a per-sample ``compare`` delta with their own pooled,
+    row-clustered, per-question estimate) must read BOTH halves from one
+    estimator: mixed, a sample of 20 one-criterion rows (A fails, B passes) and 20
+    five-criterion rows (A 5/5, B 3/5) reads SHIP ON through the old estimator and
+    REFUSE ("pooled +30 pp, negative in samples [0, 1, 2]") through the mixed one,
+    with a reason that contradicts itself. Rows without ``macro_*`` (every other
+    axis, and every artifact written before R473) are returned unchanged.
+    """
+    if "macro_delta" not in stats:
+        return stats
+    return {
+        **stats,
+        "mean_a": stats.get("macro_mean_a", stats["mean_a"]),
+        "mean_b": stats.get("macro_mean_b", stats["mean_b"]),
+        "delta": stats["macro_delta"],
+        "ci95": stats.get("macro_ci95", stats["ci95"]),
+    }
+
+
 def _row_axis(r: dict, axis: str) -> float | None:
     """Recompute one row's axis score from its judged fields."""
     from evals.official.rubric import (
@@ -676,7 +701,6 @@ def _row_axis(r: dict, axis: str) -> float | None:
         reference_conciseness,
         reference_correctness_loose,
         reference_correctness_strict,
-        regulatory_tone,
         response_speed,
     )
 
@@ -748,8 +772,6 @@ def compare(
     gitignored checkpoint is gone; a live checkpoint always wins.
     """
     from evals.official.rubric import (
-        answer_conciseness,
-        answer_conciseness as _ac,
         answer_correctness_loose,
     )
 
@@ -781,13 +803,21 @@ def compare(
         )
         macro_delta = _mean(da)
         if axis == "ans_correctness_loose":
-            crit_pairs = [
-                (
-                    [bool(c) for c in (ra[q].get("criteria") or [])],
-                    [bool(c) for c in (rb[q].get("criteria") or [])],
-                )
-                for q in shared
-            ]
+            # R474 - PAIRED over the same criteria. R473 pooled every shared row, so a
+            # row one arm never got judged (empty criteria) entered the OTHER arm only
+            # and the two arms were scored over different denominators: A [T,T] + [T,F]
+            # against B [T,T] + [] read A 75 % vs B 100 % (delta +25 pp, wrong sign).
+            # The module docstring promises such rows are "reported and dropped from
+            # both arms"; here they are.
+            crit_pairs: list[tuple[list[bool], list[bool]]] = []
+            unpaired: list[str] = []
+            for q in shared:
+                ca = [bool(c) for c in (ra[q].get("criteria") or [])]
+                cb = [bool(c) for c in (rb[q].get("criteria") or [])]
+                if ca and len(ca) == len(cb):
+                    crit_pairs.append((ca, cb))
+                else:
+                    unpaired.append(q)
             micro_a = answer_correctness_loose([ca for ca, _ in crit_pairs]) * 100.0
             micro_b = answer_correctness_loose([cb for _, cb in crit_pairs]) * 100.0
             micro_lo, micro_hi = _bootstrap_micro_loose_ci(crit_pairs, seed=seed)
@@ -795,6 +825,8 @@ def compare(
                 "n": len(da),
                 "n_criteria_a": sum(len(ca) for ca, _ in crit_pairs),
                 "n_criteria_b": sum(len(cb) for _, cb in crit_pairs),
+                "n_paired_rows": len(crit_pairs),
+                "unpaired_dropped": unpaired,
                 "mean_a": micro_a,
                 "mean_b": micro_b,
                 "delta": micro_b - micro_a,
@@ -1313,6 +1345,14 @@ def main() -> int:
             f"{axis:<26}{d['mean_a']:>8.2f}{d['mean_b']:>8.2f}"
             f"{d['delta']:>+9.2f}  {ci:<20}{d['b_better']:>4}/{d['a_better']:<3}"
             f"  {d['mcnemar_p']:>9.4f}{star}"
+        )
+    loose = res["axes"].get("ans_correctness_loose") or {}
+    if "n_paired_rows" in loose:
+        # R474 - the row above mixes two estimators; say so (the reviewer found it unlabelled).
+        print(
+            "  ans_correctness_loose: A, B, delta and CI are POOLED over criteria "
+            f"({loose['n_paired_rows']} paired rows, {len(loose.get('unpaired_dropped') or [])} "
+            "unpaired dropped); '+/-' and McNemar count per-QUESTION changes."
         )
     gd = res["gold_dropped_head"]
     print(

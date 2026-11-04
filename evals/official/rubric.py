@@ -538,6 +538,18 @@ def score_rows(
     only; they still count on the answer, tone and speed axes.  That is the
     report's own rule: "questions without annotated expected references are
     excluded".
+
+    KNOWN DEVIATIONS from the released scorer under ``profile="published_2026"``
+    (R474 - found by executing both on DEGENERATE inputs; on non-degenerate inputs
+    they agree, 0 differences over 60,000 random reference sets and 8,000 random
+    row sets): an EMPTY answer scores conciseness 0.0 here and 100 there
+    (``100 / max(1, 0)``); a row with no ``latency_s`` counts as 0 s (speed 100)
+    here and is excluded there; a set with no annotated references scores the
+    reference axes and ``overall`` as 0.0 here and as ``None`` (dropped from the
+    geometric mean) there. They are left as they are because a run that returned an
+    empty answer or no latency is a failed run, which a score of 100 would reward;
+    mirror the released handling only if replicating a released result file row for
+    row matters more than that.
     """
     if profile not in RUBRIC_PROFILES:
         raise ValueError(
@@ -592,7 +604,11 @@ def score_rows(
     out["overall"] = round(overall([axes[k] for k in AXIS_ORDER]) * 100.0, 4)
     out["n"] = len(rows)
     out["n_ref_scored"] = len(rl)
-    out["profile"] = profile
+    # R474 - NOT ``out["profile"] = profile``. R473 put the profile NAME in this dict, which
+    # ``score_arm`` writes verbatim as ``axes``; every consumer reads ``axes`` as numbers
+    # (``docs/measurements/r423/build_need_report.py`` does ``{k: float(v) ...}`` and raised
+    # ``ValueError: could not convert string to float: 'r391_report'`` on any new artifact).
+    # The profile is the caller's explicit argument, not a property of the numbers.
 
     # Auditable alternatives and diagnostics.  None of these enter ``overall``.
     macro = [sum(1 for c in r if c) / len(r) for r in crit if r]
@@ -826,12 +842,12 @@ def summarize_published_runs(
     return {
         "rows": len(entries),
         "judge_runs": runs,
-        "metrics": dict(zip(PUBLISHED_LABELS, metrics)),
-        "by_axis": dict(zip(AXIS_ORDER, metrics)),
+        "metrics": dict(zip(PUBLISHED_LABELS, metrics, strict=True)),
+        "by_axis": dict(zip(AXIS_ORDER, metrics, strict=True)),
         "overall": overall_summary,
         "per_run": [
             {
-                **dict(zip(AXIS_ORDER, row)),
+                **dict(zip(AXIS_ORDER, row, strict=True)),
                 "overall": overall_runs[idx],
             }
             for idx, row in enumerate(per_run)

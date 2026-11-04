@@ -43,12 +43,12 @@ from pathlib import Path
 from typing import Any
 
 from evals.harness import pairwise_prompts
-from evals.harness import ab_judge as _ab_judge_mod
 from evals.harness.ab_judge import (
     ArmAnswer,
     AxisResult,
     _pairwise_verdict_detail,
     gate_exit_code,
+    pair_outcome,
 )
 from evals.harness.probe_set import ProbeRow, load_probe_set
 
@@ -73,6 +73,13 @@ def _load_arm(path: str) -> dict[str, ArmAnswer]:
             http_status=int(r.get("http_status") or 200),
         )
     return out
+
+
+def _arm_ids(path: str) -> set[str]:
+    """Every row id a single-arm sidecar carries, errored or not (see ``_load_arm``)."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    rows = data.get("baseline_rows") or data.get("branch_rows") or []
+    return {r["id"] for r in rows if "id" in r}
 
 
 def _probe_index(rows: list[ProbeRow]) -> dict[str, ProbeRow]:
@@ -110,6 +117,15 @@ def main(argv: list[str] | None = None) -> int:
     idx = _probe_index(load_probe_set())
 
     common = [k for k in arm_a if k in arm_b and (k in idx)]
+    # R474 - ``_load_arm`` silently drops an errored or empty row, so an arm that
+    # answered 10 of 40 rows used to leave n_rows=10 and, with --enforce-gate, a
+    # PASS. Count what each arm failed to deliver against the union of row ids.
+    all_ids = _arm_ids(args.baseline_sidecar) | _arm_ids(args.branch_sidecar)
+    capture = {
+        "rows": len(all_ids),
+        "baseline_failed": len(all_ids - set(arm_a)),
+        "branch_failed": len(all_ids - set(arm_b)),
+    }
     if not common:
         print("[pairwise_from_answers] no aligned rows (id mismatch?)", file=sys.stderr)
         return 2
@@ -139,8 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         for ax in pairwise_prompts.AXES:
             # R416 — the detail form so swap agreement is counted, not just
             # consumed as a verdict (the consistency rate read 0.0 otherwise).
-            _ab_judge_mod._LAST_PAIRWISE_OUTCOME = "tie"
-            v, agreed = _pairwise_verdict_detail(rd, ax, a, b, caller, summaries)
+            res = _pairwise_verdict_detail(rd, ax, a, b, caller, summaries)
+            v, agreed = res
             verdicts[ax] = v
             if agreed:
                 axes[ax].swap_agreements += 1
@@ -151,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 axes[ax].ties += 1
                 if not agreed:
-                    if _ab_judge_mod._LAST_PAIRWISE_OUTCOME == "invalid":
+                    if pair_outcome(res) == "invalid":
                         axes[ax].invalids += 1
                     else:
                         axes[ax].position_disagreements += 1
@@ -188,6 +204,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         "per_row": per_row,
     }
+    result["capture"] = capture
     result["gate_exit_code"] = gate_exit_code(result)
 
     print("\n" + "=" * 78)

@@ -175,8 +175,11 @@ def keep_verdict(r440, label: str, samples: int) -> int:
     print(f"  criteria recovered (sum of per-row median drops): {rec_total:.1f} on {rec_rows} rows")
 
     # ---- per-sample direction on the correctness axes -----------------------
+    from evals.official.paired_ab import macro_axis  # noqa: PLC0415
+
     def per_sample_delta(axis: str, s: int) -> float:
-        return per_sample[s]["axes"][axis]["delta"]
+        # R474 - one estimator for both halves of the rule (see ``macro_axis``).
+        return macro_axis(per_sample[s]["axes"][axis])["delta"]
 
     refuse = []
     if new_drops:
@@ -193,7 +196,8 @@ def keep_verdict(r440, label: str, samples: int) -> int:
     strict = pool["ans_correctness_strict"]
     strict_pooled = bool(strict.get("n")) and strict["ci95"][0] > 0
     strict_samples = sum(
-        1 for s in range(samples) if per_sample[s]["axes"]["ans_correctness_strict"]["ci95"][0] > 0
+        1 for s in range(samples)
+        if macro_axis(per_sample[s]["axes"]["ans_correctness_strict"])["ci95"][0] > 0
     )
 
     print("\n" + "=" * 88)
