@@ -476,31 +476,56 @@ def judge_correctness_once(row: dict) -> list[bool] | None:
 def _verdicts_from(verdicts: list, n_criteria: int) -> tuple[list[bool] | None, list[str]]:
     """Per-criterion booleans and remarks out of a judge's ``verdicts`` list.
 
-    Accepts 1-based ``n`` (the contract), 0-based ``n``, or an unnumbered list
-    of exactly ``n_criteria`` entries; anything else is ``(None, [])``.
+    Enforces strict 1-to-1 coverage of all ``n_criteria`` items:
+    - ``verdicts`` must be a list of length ``n_criteria`` where every item is a
+      dict carrying an explicit ``"satisfied"`` key.
+    - When ``"n"`` keys are present, every item must carry a unique integer ``n``
+      covering either ``1..n_criteria`` (1-based) or ``0..n_criteria-1`` (0-based)
+      with no duplicates or out-of-range indices.
+    - Otherwise accepts an unnumbered list of ``n_criteria`` dicts.
+    Anything else returns ``(None, [])``.
     """
-    by_n = {}
-    remarks_by_n: dict[int, str] = {}
-    for v in verdicts:
-        if isinstance(v, dict) and "n" in v:
-            try:
-                item_n = int(v["n"])
-                by_n[item_n] = _parse_bool(v.get("satisfied"))
-                remarks_by_n[item_n] = str(v.get("why") or "").strip()
-            except Exception:
-                continue
-    if 0 in by_n and n_criteria not in by_n:
-        by_n = {k + 1: v for k, v in by_n.items()}
-        remarks_by_n = {k + 1: v for k, v in remarks_by_n.items()}
-    if len(by_n) < n_criteria:
-        flat = [_parse_bool(v.get("satisfied")) for v in verdicts if isinstance(v, dict)]
-        if len(flat) != n_criteria:
+    if not isinstance(verdicts, list) or len(verdicts) != n_criteria:
+        return None, []
+    if n_criteria == 0:
+        return [], []
+    if not all(isinstance(v, dict) and "satisfied" in v for v in verdicts):
+        return None, []
+
+    has_n = [("n" in v and v["n"] is not None) for v in verdicts]
+    if any(has_n):
+        if not all(has_n):
             return None, []
-        return flat, [str(v.get("why") or "").strip() for v in verdicts if isinstance(v, dict)]
-    return (
-        [by_n.get(i, False) for i in range(1, n_criteria + 1)],
-        [remarks_by_n.get(i, "") for i in range(1, n_criteria + 1)],
-    )
+        by_n: dict[int, bool] = {}
+        remarks_by_n: dict[int, str] = {}
+        for v in verdicts:
+            raw_n = v["n"]
+            if isinstance(raw_n, bool):
+                return None, []
+            try:
+                item_n = int(raw_n)
+            except Exception:
+                return None, []
+            if item_n in by_n:
+                return None, []
+            by_n[item_n] = _parse_bool(v.get("satisfied"))
+            remarks_by_n[item_n] = str(v.get("why") or "").strip()
+        keys = set(by_n.keys())
+        expected_1 = set(range(1, n_criteria + 1))
+        expected_0 = set(range(0, n_criteria))
+        if keys == expected_0:
+            by_n = {k + 1: val for k, val in by_n.items()}
+            remarks_by_n = {k + 1: val for k, val in remarks_by_n.items()}
+        elif keys != expected_1:
+            return None, []
+        return (
+            [by_n[i] for i in range(1, n_criteria + 1)],
+            [remarks_by_n[i] for i in range(1, n_criteria + 1)],
+        )
+
+    flat = [_parse_bool(v.get("satisfied")) for v in verdicts]
+    remarks = [str(v.get("why") or "").strip() for v in verdicts]
+    return flat, remarks
 
 
 def _tone_from(d: dict) -> tuple[bool, str]:
@@ -670,7 +695,9 @@ def judge_row(row: dict, repeats: int = REPEATS) -> dict:
     criteria = _majority(corr_runs, n)
     live_corr = [r for r in corr_runs if r is not None and len(r) == n]
     per_run_rate = [sum(1 for c in r if c) / n for r in live_corr] if (live_corr and n) else []
+    per_run_strict = [1.0 if all(r) else 0.0 for r in live_corr] if (live_corr and n) else []
     live_tone = [t for t in tone_runs if t is not None]
+    per_run_tone = [1.0 if t else 0.0 for t in live_tone] if live_tone else []
     criterion_remarks: list[str] = []
     for idx, majority_value in enumerate(criteria):
         remark = ""
@@ -702,8 +729,19 @@ def judge_row(row: dict, repeats: int = REPEATS) -> dict:
         "tone_ok": tone_ok,
         "tone_remark": tone_remark,
         "_judge_runs": len(live_corr),
+        "_criteria_rate_mean": (
+            round(sum(per_run_rate) / len(per_run_rate), 4) if per_run_rate else None
+        ),
         "_criteria_rate_min": round(min(per_run_rate), 4) if per_run_rate else None,
         "_criteria_rate_max": round(max(per_run_rate), 4) if per_run_rate else None,
+        "_strict_rate_mean": (
+            round(sum(per_run_strict) / len(per_run_strict), 4)
+            if per_run_strict
+            else None
+        ),
+        "_tone_rate_mean": (
+            round(sum(per_run_tone) / len(per_run_tone), 4) if per_run_tone else None
+        ),
         "_tone_runs": len(live_tone),
         "_corr_runs": corr_runs,
         "_tone_runs_raw": tone_runs,

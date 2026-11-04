@@ -43,10 +43,12 @@ from pathlib import Path
 from typing import Any
 
 from evals.harness import pairwise_prompts
+from evals.harness import ab_judge as _ab_judge_mod
 from evals.harness.ab_judge import (
     ArmAnswer,
     AxisResult,
     _pairwise_verdict_detail,
+    gate_exit_code,
 )
 from evals.harness.probe_set import ProbeRow, load_probe_set
 
@@ -94,8 +96,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--label", required=True)
     p.add_argument("--baseline-sidecar", required=True, help="A arm (e.g. sysprompt OFF)")
     p.add_argument("--branch-sidecar", required=True, help="B arm (e.g. sysprompt ON)")
-    p.add_argument("--judge-provider", default="wrapper", choices=["wrapper", "anthropic", "groq"])
+    p.add_argument("--judge-provider", default="wrapper", choices=["wrapper", "anthropic", "groq", "gemini", "bedrock"])
     p.add_argument("--judge-model", default="claude-sonnet-4-6")
+    p.add_argument(
+        "--enforce-gate",
+        action="store_true",
+        help="Return explicit gate exit code (0=PASS, 1=FAIL, 2=INDETERMINATE).",
+    )
     args = p.parse_args(argv)
 
     arm_a = _load_arm(args.baseline_sidecar)
@@ -132,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         for ax in pairwise_prompts.AXES:
             # R416 — the detail form so swap agreement is counted, not just
             # consumed as a verdict (the consistency rate read 0.0 otherwise).
+            _ab_judge_mod._LAST_PAIRWISE_OUTCOME = "tie"
             v, agreed = _pairwise_verdict_detail(rd, ax, a, b, caller, summaries)
             verdicts[ax] = v
             if agreed:
@@ -142,6 +150,11 @@ def main(argv: list[str] | None = None) -> int:
                 axes[ax].wins_a += 1
             else:
                 axes[ax].ties += 1
+                if not agreed:
+                    if _ab_judge_mod._LAST_PAIRWISE_OUTCOME == "invalid":
+                        axes[ax].invalids += 1
+                    else:
+                        axes[ax].position_disagreements += 1
         per_row.append({"id": rid, "category": row.category, "verdicts": verdicts})
         print(f"  [judge] {i + 1}/{len(common)} {rid}  {verdicts}", flush=True)
 
@@ -155,6 +168,9 @@ def main(argv: list[str] | None = None) -> int:
         "axes": {
             ax: {
                 "wins_branch": r.wins_b, "wins_baseline": r.wins_a, "ties": r.ties,
+                "genuine_ties": r.genuine_ties(),
+                "invalids": r.invalids,
+                "position_disagreements": r.position_disagreements,
                 "win_rate_branch": r.win_rate_b(), "p_value": r.p_value(),
                 "verdict": r.verdict(),
                 # R418 — the tally above increments ``swap_agreements`` but this
@@ -172,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         "per_row": per_row,
     }
+    result["gate_exit_code"] = gate_exit_code(result)
 
     print("\n" + "=" * 78)
     print(f"PAIRWISE-FROM-ANSWERS — label={args.label!r}  n={len(common)}")
@@ -189,6 +206,8 @@ def main(argv: list[str] | None = None) -> int:
     out = _RESULTS / f"pairwise-from-answers-{args.label}.json"
     out.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
     print(f"\nsidecar: {out}")
+    if args.enforce_gate:
+        return gate_exit_code(result)
     return 0
 
 

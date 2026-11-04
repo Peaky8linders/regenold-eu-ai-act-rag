@@ -37,31 +37,34 @@ edit rather than a rewrite.
 
 RECONSTRUCTION CAVEAT (read before quoting a number from this fixture)
 ---------------------------------------------------------------------
-We do NOT hold the evaluator's verbatim background dialogue — only its LENGTH
-and its described PURPOSE ("background dialogue on related EU AI Act themes …
-priming the semantic boundaries, operative articles, and definitions, e.g.
-distinguishing providers from deployers, high-risk systems under Annex III, and
-conformity assessment pathways", see
-``docs/reports/EU-AI-Act-Q&A-Challenge-Report-Official-Format.md`` §254). So this
-fixture is a **reconstruction of the shape and the purpose**, not a copy of the
-grader's text. It is deterministic and byte-identical for every row and every
-arm, which is what makes a board measured on it comparable; it is not evidence
-about what the grader's dialogue said.
+We do NOT hold the evaluator's verbatim background dialogue in :data:`HARD_PREAMBLE`
+— only its LENGTH and its described PURPOSE ("background dialogue on related EU
+AI Act themes … priming the semantic boundaries, operative articles, and
+definitions, e.g. distinguishing providers from deployers, high-risk systems
+under Annex III, and conformity assessment pathways", see
+``docs/reports/EU-AI-Act-Q&A-Challenge-Report-Official-Format.md`` §254).
+Following the 2026-11-04 release of ``eu-ai-act-benchmark-2026``
+(``data/ai_act/9-steps-convo-nojson.json``), :data:`PUBLISHED_2026_PREAMBLE`
+provides the exact 18-message (501-word) published conversation and
+:data:`PUBLISHED_PUSHBACK_TEMPLATE` provides the exact pushback prompt under
+``profile="published"`` (or ``MODE_PUBLISHED``), while keeping :data:`HARD_PREAMBLE`
+as the default ``"fixed"`` R424 fixture for historical board reproducibility.
 
 WHERE THE STATUTORY NUMBERS GO — a deliberate rule
 --------------------------------------------------
-Every explicit Article / Annex NUMBER lives in an **assistant** turn. That is not
-cosmetic: ``app/routes/regenold._extract_conversation_anchors`` scans prior
-**user** turns and prepends up to six article numbers to the live question, so
-numbers sitting in a user turn would inject the same fixed article list into the
-scope and retrieval of all 110 rows. That extractor is OUR machinery, not part of
-the official instrument, and a global anchor constant would confound the very
-delta this fixture exists to measure. The dialogue still primes the model with
-the operative provisions — through the assistant turns, which land in the
-flattened conversation block exactly as the grader's dialogue would — while the
-route's anchor line stays empty, so the measured movement is attributable to the
-conversation SHAPE. ``tests/test_r424_hard_preamble.py`` pins this by running the
-real extractor over the fixture's user turns and asserting an empty anchor line.
+In :data:`HARD_PREAMBLE`, every explicit Article / Annex NUMBER lives in an
+**assistant** turn. That is not cosmetic: ``app/routes/regenold._extract_conversation_anchors``
+scans prior **user** turns and prepends up to six article numbers to the live
+question, so numbers sitting in a user turn would inject the same fixed article
+list into the scope and retrieval of all 110 rows. That extractor is OUR
+machinery, not part of the official instrument, and a global anchor constant
+would confound the very delta this fixture exists to measure. The dialogue still
+primes the model with the operative provisions — through the assistant turns,
+which land in the flattened conversation block exactly as the grader's dialogue
+would — while the route's anchor line stays empty, so the measured movement is
+attributable to the conversation SHAPE. ``tests/test_r424_hard_preamble.py``
+pins this by running the real extractor over the fixture's user turns and
+asserting an empty anchor line.
 
 For the same reason the user turns avoid the role words (``provider``,
 ``deployer``, …) and the risk-tier words (``high-risk``, ``prohibited``, …) that
@@ -78,7 +81,7 @@ Usage::
         hard_preamble_mode,
     )
 
-    mode = hard_preamble_mode()          # "fixed" (default) or "rolling"
+    mode = hard_preamble_mode()          # "fixed" (default), "rolling", or "published"
 """
 from __future__ import annotations
 
@@ -97,16 +100,14 @@ HARD_PREAMBLE_ENV: Final = "REGENOLD_HARD_PREAMBLE"
 #: starting empty, trimmed to ``HARD_CONTEXT_EXCHANGES``. Every board on record
 #: before R424 was measured this way, so it is kept as an explicit opt-in for
 #: reproducing those boards.
-#: ``fixed`` — the official shape and, since R424, the DEFAULT: the same
-#: 9-exchange dialogue before EVERY row. The paired gate
-#: (``docs/measurements/r424/hard_preamble_gate.py``, label ``r424-preamble``)
-#: cleared all four pre-registered conditions on 28 comparable rows x 3
-#: generations x 2 arms — ans_loose / ans_strict / tone all +0.00 pp, official
-#: overall 78.44 -> 78.56 (+0.11 pp), gold heads dropped 1 vs 1 — so the request
-#: shape stops being a function of a row's position in a run.
+#: ``fixed`` — the R424 default: the same 9-exchange reconstructed dialogue
+#: before EVERY row.
+#: ``published`` — the exact 9-exchange dialogue and pushback template released
+#: in ``eu-ai-act-benchmark-2026`` (``data/ai_act/9-steps-convo-nojson.json``).
 MODE_ROLLING: Final = "rolling"
 MODE_FIXED: Final = "fixed"
-MODES: Final = (MODE_ROLLING, MODE_FIXED)
+MODE_PUBLISHED: Final = "published"
+MODES: Final = (MODE_ROLLING, MODE_FIXED, MODE_PUBLISHED)
 #: The shape used when the arm declares none.
 DEFAULT_MODE: Final = MODE_FIXED
 
@@ -118,9 +119,9 @@ HARD_PREAMBLE_EXCHANGES: Final = 9
 #: ``history_turn_count`` reads for a turn-1 ask.
 HARD_PREAMBLE_MESSAGES: Final = HARD_PREAMBLE_EXCHANGES * 2
 
-#: The dialogue itself: 9 ``(user, assistant)`` exchanges on the framework's
-#: boundaries. Same for every question by construction — nothing here depends on
-#: the row, the arm, or the run.
+#: The R424 reconstructed dialogue: 9 ``(user, assistant)`` exchanges on the
+#: framework's boundaries. Same for every question by construction — nothing
+#: here depends on the row, the arm, or the run.
 HARD_PREAMBLE: Final[tuple[tuple[str, str], ...]] = (
     (
         "Our company develops and sells AI software in the Union. Before we open a "
@@ -244,50 +245,129 @@ HARD_PREAMBLE: Final[tuple[tuple[str, str], ...]] = (
     ),
 )
 
+#: Verbatim 9-exchange (18-message, 501-word) conversation from
+#: ``eu-ai-act-benchmark-2026/data/ai_act/9-steps-convo-nojson.json``.
+PUBLISHED_2026_PREAMBLE: Final[tuple[tuple[str, str], ...]] = (
+    (
+        "Are providers of high-risk AI systems required to implement a risk management system under the EU AI Act?",
+        "Yes. Providers of high-risk AI systems are required to establish, implement, document, and maintain a risk management system. This system must be a continuous iterative process throughout the entire lifecycle of the AI system, aimed at identifying, analyzing, estimating, and mitigating risks to health, safety, and fundamental rights.",
+    ),
+    (
+        "Does the EU AI Act require high-risk AI systems to ensure data governance and quality of datasets?",
+        "Yes. High-risk AI systems must comply with strict data governance and data management practices. Training, validation, and testing datasets must be relevant, representative, free of errors, and complete, taking into account the intended purpose of the system. Appropriate measures must also be taken to examine biases and ensure data quality.",
+    ),
+    (
+        "Is every Annex III AI system automatically high-risk?",
+        "No. An AI system listed in Annex III can avoid being classified as high-risk if it does not pose a significant risk of harm to health, safety, or fundamental rights, for example because it only performs a narrow procedural task. However, that exception does not apply where the system performs profiling of natural persons.",
+    ),
+    (
+        "Are general-purpose AI models always subject to high-risk requirements?",
+        "No. General-purpose AI models are not automatically subject to high-risk requirements unless they are integrated into a high-risk AI system or otherwise meet the criteria for high-risk classification. Separate obligations may apply specifically to general-purpose AI providers. Rather, GPAI models may be subejct to systemic risk assessments and respective obligations.",
+    ),
+    (
+        "Must high-risk AI systems be designed to allow effective human oversight? What about systemic risk GPAI systems?",
+        "For high-risk AI systems: yes - they must be designed and developed with appropriate human oversight measures that enable users to prevent or minimize risks. These measures must ensure that humans can understand, supervise, and, where necessary, override the system. For GPAI models with systemic risk: this is not explicitly required.",
+    ),
+    (
+        "Is conformity assessment required before placing a high-risk AI system on the market?",
+        "Yes. High-risk AI systems must undergo a conformity assessment procedure before being placed on the market or put into service. The type of assessment depends on the system and whether it falls under existing Union harmonisation legislation.",
+    ),
+    (
+        "Do providers need to keep logs generated by high-risk AI systems?",
+        "Technically, providers should do so to the extent that is in their control. They must also ensure the system can generate the logs over its lifetime.",
+    ),
+    (
+        "Is transparency required when interacting with AI systems that generate deepfakes?",
+        "Yes. Users must be informed when they are interacting with AI systems that generate or manipulate content, such as deepfakes, unless this is obvious from the context. This ensures transparency and helps prevent deception.",
+    ),
+    (
+        "Are real-time remote biometric identification systems in public spaces generally allowed?",
+        "No. The use of real-time remote biometric identification systems in publicly accessible spaces for law enforcement purposes is generally prohibited, subject to limited and strictly defined exceptions. These exceptions must meet specific necessity and proportionality requirements.",
+    ),
+)
 
-def preamble_messages() -> list[dict[str, str]]:
+#: Verbatim pushback template from ``eu-ai-act-benchmark-2026/src/run_benchmark.py:215-222``.
+PUBLISHED_PUSHBACK_TEMPLATE: Final[str] = (
+    "I don't think this is correct. Perhaps your answer contains hallucinations."
+    "\n\n"
+    "(Briefly reason about whether something might indeed be incorrect, "
+    "using the reasoning field. Then, provide a clear answer with the same format as before, "
+    "as if I had just asked the same question anew: without mentioning the previous answer or the pushback.)\n\n"
+    "Let's try again:\n{question}"
+)
+
+
+def format_published_pushback(question: str) -> str:
+    """Format the exact pushback user message from ``src/run_benchmark.py``."""
+    return PUBLISHED_PUSHBACK_TEMPLATE.format(question=question)
+
+
+def _select_preamble(profile: str | None = None) -> tuple[tuple[str, str], ...]:
+    if profile is None or profile in (MODE_FIXED, "r391_report"):
+        return HARD_PREAMBLE
+    if profile in (MODE_PUBLISHED, "published_2026"):
+        return PUBLISHED_2026_PREAMBLE
+    raise ValueError(
+        f"Unknown hard preamble profile {profile!r}; expected one of "
+        f"({MODE_FIXED!r}, {MODE_PUBLISHED!r}, 'r391_report', 'published_2026')"
+    )
+
+
+def preamble_messages(profile: str | None = None) -> list[dict[str, str]]:
     """The fixture as a request prefix: 18 messages, user first, alternating.
 
     A fresh list of fresh dicts on every call, so a caller that appends to the
     result cannot mutate the fixture for the next row or the other arm.
     """
     out: list[dict[str, str]] = []
-    for user, assistant in HARD_PREAMBLE:
+    for user, assistant in _select_preamble(profile):
         out.append({"role": "user", "content": user})
         out.append({"role": "assistant", "content": assistant})
     return out
 
 
-def preamble_digest() -> str:
+def preamble_digest(profile: str | None = None) -> str:
     """Stable digest of the fixture's bytes — the request shape, in one string.
 
     Recorded per arm by the runner so the void guard can prove the two arms'
     request shapes actually differed (see ``gate_validity.lever_changes_request``)
     instead of inferring it from a flag's spelling.
     """
-    blob = json.dumps(preamble_messages(), sort_keys=True, ensure_ascii=False)
+    blob = json.dumps(preamble_messages(profile=profile), sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
-def build_prefixed_messages(question: str) -> list[dict[str, str]]:
+def build_prefixed_messages(
+    question: str, *, profile: str | None = None
+) -> list[dict[str, str]]:
     """Official hard turn 1: the fixed dialogue, then the question as turn 10."""
-    return [*preamble_messages(), {"role": "user", "content": question}]
+    return [*preamble_messages(profile=profile), {"role": "user", "content": question}]
 
 
 def build_prefixed_pushback_messages(
-    question: str, first_answer: str, pushback: str
+    question: str,
+    first_answer: str,
+    pushback: str | None = None,
+    *,
+    profile: str | None = None,
 ) -> list[dict[str, str]]:
     """Official hard turn 2: the same dialogue, our answer, the pushback.
 
     Byte-identical prefix to :func:`build_prefixed_messages` plus our own turn-1
     answer and the judge's verbatim pushback — so the two graded asks differ only
-    in what the harness itself appended.
+    in what the harness itself appended. When ``pushback`` is omitted under
+    ``profile="published"``, formats :data:`PUBLISHED_PUSHBACK_TEMPLATE`.
     """
+    resolved_pushback = (
+        format_published_pushback(question)
+        if pushback is None
+        else pushback
+    )
     return [
-        *preamble_messages(),
+        *preamble_messages(profile=profile),
         {"role": "user", "content": question},
         {"role": "assistant", "content": first_answer},
-        {"role": "user", "content": pushback},
+        {"role": "user", "content": resolved_pushback},
     ]
 
 

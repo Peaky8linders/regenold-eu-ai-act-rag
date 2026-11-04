@@ -1,0 +1,247 @@
+{
+  "kind": "offline diagnostic; not a performance A/B evaluation",
+  "git_head": "5a64d8965da6f723704e21ca2f0ecf22c19768d0",
+  "service_environment": {
+    "REGENOLD_SKIP_DOTENV": "1",
+    "OPENAI_API_BASE": "http://127.0.0.1:1/v1",
+    "P2P_GRAPH_RAG_PROVIDER": "cli",
+    "REGENOLD_EXTERNAL_EMBEDDINGS": "0",
+    "NEO4J_URI": "",
+    "NEO4J_AUTO_SEED": "0"
+  },
+  "budget_environment": "unset; module defaults",
+  "cases": [
+    {
+      "question": "What obligations must a hospital meet when it deploys a high-risk AI system?",
+      "http_status": 200,
+      "draft": "As deployer, the hospital must use the system in accordance with the provider's instructions for use, which Article 13 requires the provider to supply (Article 26(1)). The hospital must assign human oversight to natural persons with the necessary competence, training and authority (Article 26(2)), monitor the system's operation on the basis of those instructions and inform the provider of serious incidents (Article 26(5)), and retain the logs the system automatically generates (Article 26(6)). Where the hospital is a body governed by public law, a private entity providing public services, or a deployer of an Annex III point 5(b) or 5(c) system, it must perform a fundamental rights impact assessment before first use (Article 27). A person subject to a deployer decision based on the system's output that produces legal effects or similarly significantly affects health, safety or fundamental rights has a right to an explanation (Article 86). These are deployer duties only: the hospital does not bear the provider's design and conformity duties unless it becomes a provider under Article 25 by putting its name or trademark on the system, making a substantial modification, or changing the intended purpose.",
+      "draft_sentences": 5,
+      "wire_answer_sentences": 5,
+      "draft_sentences_absent_from_wire": [],
+      "wire": {
+        "answer": "As deployer, the hospital must use the system in accordance with the provider's instructions for use, which Article 13 requires the provider to supply (Article 26(1)). The hospital must assign human oversight to natural persons with the necessary competence, training and authority (Article 26(2)), monitor the system's operation on the basis of those instructions and inform the provider of serious incidents (Article 26(5)), and retain the logs the system automatically generates (Article 26(6)). Where the hospital is a body governed by public law, a private entity providing public services, or a deployer of an Annex III point 5(b) or 5(c) system, it must perform a fundamental rights impact assessment before first use (Article 27). A person subject to a deployer decision based on the system's output that produces legal effects or similarly significantly affects health, safety or fundamental rights has a right to an explanation (Article 86). These are deployer duties only: the hospital does not bear the provider's design and conformity duties unless it becomes a provider under Article 25 by putting its name or trademark on the system, making a substantial modification, or changing the intended purpose.",
+        "references": [
+          "Article 26",
+          "Article 27.1",
+          "Article 86",
+          "Article 25",
+          "Article 13"
+        ],
+        "reasoning": "{\"schema_version\":\"r50.1\",\"scope\":{\"verdict\":\"in_scope\",\"evidence\":\"AI Act anchor keyword(s) present.\"},\"anchors_used\":[\"Art. 6\"],\"references\":[\"Article 26\",\"Article 27.1\",\"Article 86\",\"Article 25\",\"Article 13\"],\"retrieval_path\":\"kb_fallback\",\"stage2_polish\":false,\"engine_confidence\":0.85,\"cache_hit\":false,\"notes\":[\"curated_ref_protect: prune skipped\",\"ref_grain_deepen Article 27->Article 27.1\"]}"
+      },
+      "reference_pass_changes": [
+        {
+          "function": "_surface_anchor_citations",
+          "before": [
+            "Article 26",
+            "Article 26.1",
+            "Article 26.2",
+            "Article 26.5",
+            "Article 26.6",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13",
+            "Annex III"
+          ],
+          "after": [
+            "Article 26.1",
+            "Article 26.2",
+            "Article 26.5",
+            "Article 26.6",
+            "Article 26",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13",
+            "Article 6",
+            "Annex III"
+          ]
+        },
+        {
+          "function": "_collapse_multi_leaf_clusters",
+          "before": [
+            "Article 26",
+            "Article 26.1",
+            "Article 26.2",
+            "Article 26.5",
+            "Article 26.6",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13",
+            "Annex III"
+          ],
+          "after": [
+            "Article 26",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13",
+            "Annex III"
+          ]
+        },
+        {
+          "function": "_curated_budget_cut",
+          "before": [
+            "Article 26.1",
+            "Article 26.2",
+            "Article 26.5",
+            "Article 26.6",
+            "Article 26",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13",
+            "Article 6",
+            "Annex III"
+          ],
+          "after": [
+            "Article 26",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13"
+          ]
+        },
+        {
+          "function": "_deepen_ref_grain",
+          "before": [
+            "Article 26",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13"
+          ],
+          "after": [
+            "Article 26",
+            "Article 27.1",
+            "Article 86",
+            "Article 25",
+            "Article 13"
+          ]
+        }
+      ]
+    },
+    {
+      "question": "A hospital deploys a high-risk AI system. What are the hospital's obligations?",
+      "http_status": 200,
+      "draft": "As deployer, the hospital must use the system in accordance with the provider's instructions for use, which Article 13 requires the provider to supply (Article 26(1)). The hospital must assign human oversight to natural persons with the necessary competence, training and authority (Article 26(2)), monitor the system's operation on the basis of those instructions and inform the provider of serious incidents (Article 26(5)), and retain the logs the system automatically generates (Article 26(6)). Where the hospital is a body governed by public law, a private entity providing public services, or a deployer of an Annex III point 5(b) or 5(c) system, it must perform a fundamental rights impact assessment before first use (Article 27). A person subject to a deployer decision based on the system's output that produces legal effects or similarly significantly affects health, safety or fundamental rights has a right to an explanation (Article 86). These are deployer duties only: the hospital does not bear the provider's design and conformity duties unless it becomes a provider under Article 25 by putting its name or trademark on the system, making a substantial modification, or changing the intended purpose.",
+      "draft_sentences": 5,
+      "wire_answer_sentences": 5,
+      "draft_sentences_absent_from_wire": [],
+      "wire": {
+        "answer": "As deployer, the hospital must use the system in accordance with the provider's instructions for use, which Article 13 requires the provider to supply (Article 26(1)). The hospital must assign human oversight to natural persons with the necessary competence, training and authority (Article 26(2)), monitor the system's operation on the basis of those instructions and inform the provider of serious incidents (Article 26(5)), and retain the logs the system automatically generates (Article 26(6)). Where the hospital is a body governed by public law, a private entity providing public services, or a deployer of an Annex III point 5(b) or 5(c) system, it must perform a fundamental rights impact assessment before first use (Article 27). A person subject to a deployer decision based on the system's output that produces legal effects or similarly significantly affects health, safety or fundamental rights has a right to an explanation (Article 86). These are deployer duties only: the hospital does not bear the provider's design and conformity duties unless it becomes a provider under Article 25 by putting its name or trademark on the system, making a substantial modification, or changing the intended purpose.",
+        "references": [
+          "Article 26",
+          "Article 27.1",
+          "Article 86",
+          "Article 25",
+          "Article 13"
+        ],
+        "reasoning": "{\"schema_version\":\"r50.1\",\"scope\":{\"verdict\":\"in_scope\",\"evidence\":\"AI Act anchor keyword(s) present.\"},\"anchors_used\":[\"Art. 6\"],\"references\":[\"Article 26\",\"Article 27.1\",\"Article 86\",\"Article 25\",\"Article 13\"],\"retrieval_path\":\"kb_fallback\",\"stage2_polish\":false,\"engine_confidence\":0.85,\"cache_hit\":false,\"sub_queries\":[{\"q\":\"A hospital deploys a high-risk AI system\",\"source\":\"kb\",\"reason\":\"multi_phrase_decompose\"},{\"q\":\"What are the hospital's obligations\",\"source\":\"kb\",\"reason\":\"multi_phrase_decompose\"}],\"notes\":[\"sufficient_context_hop reason=multi_phrase_decompose sub_queries=2\",\"curated_ref_protect: prune skipped\",\"ref_grain_deepen Article 27->Article 27.1\"]}"
+      },
+      "reference_pass_changes": [
+        {
+          "function": "_surface_anchor_citations",
+          "before": [
+            "Article 26",
+            "Article 26.1",
+            "Article 26.2",
+            "Article 26.5",
+            "Article 26.6",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13",
+            "Annex III"
+          ],
+          "after": [
+            "Article 26.1",
+            "Article 26.2",
+            "Article 26.5",
+            "Article 26.6",
+            "Article 26",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13",
+            "Article 6",
+            "Annex III"
+          ]
+        },
+        {
+          "function": "_collapse_multi_leaf_clusters",
+          "before": [
+            "Article 26",
+            "Article 26.1",
+            "Article 26.2",
+            "Article 26.5",
+            "Article 26.6",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13",
+            "Annex III"
+          ],
+          "after": [
+            "Article 26",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13",
+            "Annex III"
+          ]
+        },
+        {
+          "function": "_curated_budget_cut",
+          "before": [
+            "Article 26.1",
+            "Article 26.2",
+            "Article 26.5",
+            "Article 26.6",
+            "Article 26",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13",
+            "Article 6",
+            "Annex III"
+          ],
+          "after": [
+            "Article 26",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13"
+          ]
+        },
+        {
+          "function": "_deepen_ref_grain",
+          "before": [
+            "Article 26",
+            "Article 27",
+            "Article 86",
+            "Article 25",
+            "Article 13"
+          ],
+          "after": [
+            "Article 26",
+            "Article 27.1",
+            "Article 86",
+            "Article 25",
+            "Article 13"
+          ]
+        }
+      ]
+    }
+  ],
+  "fixture_probe": {
+    "source": "https://arxiv.org/html/2611.04546v1#A2",
+    "scope": "one published user turn only; not the complete official fixture",
+    "current_fixture_anchors": "",
+    "published_turn": "Is every Annex III AI system automatically high-risk?",
+    "published_turn_anchors": "[Context anchors — articles: Annex III; risk tier: high-risk, annex iii]"
+  },
+  "network_attempts": []
+}
