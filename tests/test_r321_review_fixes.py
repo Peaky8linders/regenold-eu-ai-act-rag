@@ -232,21 +232,22 @@ class TestLiveSentenceCapFailsClosed:
 
 
 class TestDeploySafety:
-    def test_healthz_does_no_llm_call_by_default(self) -> None:
-        """/healthz is Railway's healthcheckPath under a 30 s timeout. As
-        shipped it fired a live Groq completion whose budget fell back to the
-        60 s singleton default."""
-        from app.main import _healthz_probe_enabled
+    def test_healthz_does_no_llm_call_and_returns_only_identity(self, monkeypatch) -> None:
+        """/healthz is Railway's healthcheckPath under a 30 s timeout and is
+        public: it must never call a model, whatever the environment says."""
+        from fastapi.testclient import TestClient
 
-        assert _healthz_probe_enabled() is False
+        from app.llm import openai_wrapper_provider as owp
+        from app.main import app
 
-    @pytest.mark.parametrize("val,expected", [("1", True), ("true", True),
-                                              ("0", False), ("", False)])
-    def test_healthz_probe_is_opt_in(self, val: str, expected: bool, monkeypatch) -> None:
-        from app.main import _healthz_probe_enabled
-
-        monkeypatch.setenv("REGENOLD_HEALTHZ_PROBE", val)
-        assert _healthz_probe_enabled() is expected
+        monkeypatch.setenv("REGENOLD_HEALTHZ_PROBE", "1")
+        monkeypatch.setattr(
+            owp, "get_groq_provider",
+            lambda *a, **k: (_ for _ in ()).throw(AssertionError("model call from /healthz")),
+        )
+        r = TestClient(app).get("/healthz")
+        assert r.status_code == 200
+        assert set(r.json()) == {"status", "version", "commit", "deployment_id"}
 
 
 # ── Article 6(3) first-subparagraph limb + Art 49(2) addressee (Critical) ────

@@ -922,81 +922,16 @@ def _deploy_identity() -> dict[str, str]:
     }
 
 
-#: R321 — the live Groq probe on ``/healthz`` is OPT-IN and default OFF.
-#:
-#: ``railway.toml`` sets ``healthcheckPath = "/healthz"`` with
-#: ``healthcheckTimeout = 30``. As shipped this handler fired a real Groq
-#: completion with ``max_tokens=1024`` and NO ``timeout_seconds``, so the
-#: budget fell back to the provider singleton's ``GROQ_TIMEOUT_SECONDS``
-#: default of 60 s — twice the healthcheck budget — and the 429 arm adds a
-#: sleep plus a SECOND POST inside that same deadline. A slow or rate-limited
-#: Groq could therefore hold the deploy healthcheck past its timeout and fail
-#: the release. Observed live on 2026-08-07: ``/healthz`` returned
-#: ``fallback_test.error = "api_status_429 ... TPD Limit 200000, Used 199382"``,
-#: i.e. the probe was really running against a rate-limited account on the
-#: deploy path.
-#:
-#: A deploy healthcheck must answer one question — is this process serving? —
-#: cheaply and deterministically. Live provider probing already has a purpose
-#: -built endpoint (``/healthz/llm``), which is where it belongs. Set
-#: ``REGENOLD_HEALTHZ_PROBE=1`` to re-enable it here for debugging; even then
-#: it is bounded well inside the healthcheck budget.
-_HEALTHZ_PROBE_TIMEOUT_S = 5.0
-_HEALTHZ_PROBE_MAX_TOKENS = 16
-
-
-def _healthz_probe_enabled() -> bool:
-    return os.getenv("REGENOLD_HEALTHZ_PROBE", "0").strip().lower() in {
-        "1", "true", "yes", "on",
-    }
-
-
 @app.get("/healthz")
 def healthz() -> dict[str, object]:
-    from app.llm.openai_wrapper_provider import is_groq_provider_enabled, get_groq_provider, OpenAIWrapperRequest, default_groq_model
-    fallback_status = None
-    fallback_error = None
-    fallback_text = None
-    fallback_finish_reason = None
-    fallback_model = None
+    """Railway's deploy healthcheck: cheap, public, no provider call.
 
-    if _healthz_probe_enabled() and is_groq_provider_enabled():
-        try:
-            prov = get_groq_provider()
-            resp = prov.complete(
-                OpenAIWrapperRequest(
-                    system="You are a regulation expert. Answer concisely.",
-                    user="What is a general purpose AI model under the AI Act?",
-                    model=default_groq_model(),
-                    max_tokens=_HEALTHZ_PROBE_MAX_TOKENS,
-                    temperature=0.0,
-                    timeout_seconds=_HEALTHZ_PROBE_TIMEOUT_S,
-                )
-            )
-            fallback_model = resp.model
-            fallback_finish_reason = resp.finish_reason
-            if resp.error:
-                fallback_status = "error"
-                fallback_error = resp.error
-            else:
-                fallback_status = "ok"
-                fallback_text = resp.text
-        except Exception as e:
-            fallback_status = "exception"
-            fallback_error = str(e)
-            
+    Live provider probing lives on the partner-key-gated ``/healthz/llm``.
+    """
     return {
         "status": "ok",
         "version": settings.version,
         **_deploy_identity(),
-        "is_groq_enabled": is_groq_provider_enabled(),
-        "fallback_test": {
-            "status": fallback_status,
-            "error": fallback_error,
-            "finish_reason": fallback_finish_reason,
-            "model": fallback_model,
-            "text": fallback_text[:500] if fallback_text else None,
-        }
     }
 
 
@@ -1733,8 +1668,7 @@ def _healthz_graph_probe() -> dict[str, object]:
 # anonymous caller gets 401 (wrong key 403, no configured key 503) before any
 # probe, model call or send runs. Only ``/healthz`` stays public: Railway's
 # deploy healthcheck (``railway.toml`` healthcheckPath) hits it. It returns
-# status, version, commit and deployment id, ``is_groq_enabled``, and a
-# ``fallback_test`` block that is empty unless ``REGENOLD_HEALTHZ_PROBE`` is set.
+# only status, version, commit and deployment id and makes no provider call.
 
 _PARTNER_ONLY = [Depends(require_regenold_api_key)]
 
