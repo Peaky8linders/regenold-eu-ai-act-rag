@@ -87,8 +87,8 @@ from app.evidence.models import EvidenceEntryType
 from app.evidence.store import get_evidence_store
 from app.integrations.regenold.answer_normaliser import answer_has_enumeration
 from app.integrations.regenold.auth import (
-    is_known_regenold_key,
     require_regenold_api_key,
+    validate_regenold_api_key,
 )
 from app.integrations.regenold.lexy_gate import (
     classify_safety_intent,
@@ -2464,8 +2464,9 @@ _NO_MATCH_ANSWER = (
 
 
 # Tier prefixes — used by both the rate-limit key_func and the dynamic
-# limit resolver below. The prefix is the public discriminator between
-# the privileged + anonymous buckets, so they NEVER share storage.
+# limit resolver below. Only the partner key reaches the handler (the auth
+# dependency rejects everything else first); the IP bucket is a defensive
+# fallback for a request that never presented a valid key.
 _RATE_KEY_PREFIX_AUTHED = "regenold-key:"
 _RATE_KEY_PREFIX_ANON = "regenold-anon:"
 
@@ -2667,8 +2668,7 @@ def _hash16(value: str) -> str:
 
 
 # Trust X-Forwarded-For only when the deploy explicitly opts in by
-# setting REGENOLD_TRUST_PROXY=true. Without this, an anonymous-tier
-# attacker behind any CDN could spoof XFF to bypass the per-IP bucket.
+# setting REGENOLD_TRUST_PROXY=true. Without this, a caller behind any CDN could spoof XFF to bypass the per-IP bucket.
 # Default = OFF (use direct socket address). The README + .env.example
 # both document the trust-boundary requirement.
 _TRUST_PROXY = os.getenv("REGENOLD_TRUST_PROXY", "").strip().lower() in {
@@ -2699,21 +2699,15 @@ def _client_addr(request: Request) -> str:
 def _regenold_rate_key(request: Request) -> str:
     """Return the rate-limit bucket key for this request.
 
-    Privileged tier: the caller sent a valid ``X-Regenold-Api-Key`` —
-    bucket prefix ``regenold-key:`` so 60/min applies (see
-    :func:`_regenold_dynamic_limit`).
-
-    Anonymous tier: no header OR no configured key on this deploy —
-    bucket prefix ``regenold-anon:`` with a 16-hex IP hash so the
-    30/min budget is per-source-IP rather than global. The raw IP is
-    never stored. When ``REGENOLD_TRUST_PROXY=true``, the IP is read
-    from ``X-Forwarded-For`` (leftmost) instead of the direct socket.
-
-    The two tiers are stored under DIFFERENT keys, so a flood of anon
-    traffic cannot exhaust a partner's privileged 60/min budget.
+    A valid partner ``X-Regenold-Api-Key`` is bucketed by the key's hash
+    (prefix ``regenold-key:``, 60/min). The route's auth dependency rejects
+    every other caller before the handler runs, so the per-IP
+    ``regenold-anon:`` bucket (16-hex IP hash, raw IP never stored; honours
+    ``X-Forwarded-For`` only with ``REGENOLD_TRUST_PROXY=true``) is only a
+    defensive fallback.
     """
     api_key = request.headers.get("X-Regenold-Api-Key", "")
-    if api_key and is_known_regenold_key(api_key):
+    if api_key and validate_regenold_api_key(api_key):
         return f"{_RATE_KEY_PREFIX_AUTHED}{_hash16(api_key)}"
     return f"{_RATE_KEY_PREFIX_ANON}{_hash16(_client_addr(request))}"
 
@@ -2725,11 +2719,9 @@ def _regenold_dynamic_limit(key: str) -> str:
     ``key_func(request)`` value when the limit_value signature
     declares a ``key`` parameter (see :class:`slowapi.wrappers.LimitGroup`).
 
-    - ``regenold-key:<hash>`` → ``60/minute`` (partner tier)
-    - ``regenold-anon:<hash>`` → ``30/minute`` (public tier)
-    - anything else → conservative anon tier (defensive fallback;
-      should never hit prod because :func:`_regenold_rate_key` only
-      emits the two prefixes above).
+    - ``regenold-key:<hash>`` → ``60/minute`` (partner key)
+    - anything else → ``30/minute`` (defensive fallback only; unreachable
+      for an authenticated request).
     """
     if key.startswith(_RATE_KEY_PREFIX_AUTHED):
         return "60/minute"

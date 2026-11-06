@@ -259,7 +259,6 @@ _JUSTIFIED_EXCLUSIONS: dict[str, str] = {
     "REGENOLD_CITE_DESCRIBE_GUARD": "route post-processing; re-runs on every cache hit",
     "REGENOLD_SCOPE_STICKINESS": "route-side conversation-scope classification (in/out-of-scope refusal)",
     "REGENOLD_APP_URL": "route-side app configuration (email links)",
-    "REGENOLD_USER_DB_URL": "infrastructure configuration (user-store backend selection)",
     # External configuration, not an engine-behaviour lever.
     "REGENOLD_NLI_API": "external endpoint URL; its gate (REGENOLD_NLI_VERIFY) is route-side",
     # Consumed only by the dead app/engines/graph_rag/ sub-package — zero

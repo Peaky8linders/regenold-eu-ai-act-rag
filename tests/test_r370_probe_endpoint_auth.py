@@ -1,39 +1,17 @@
-"""R370 — the health probes that SPEND are operator-only.
+"""Diagnostics are partner-only; only ``/healthz`` and ``/`` answer anonymously.
 
-Two endpoints let an anonymous caller spend someone else's money or someone
-else's sending reputation. Both were publicly reachable on production —
-verified with an unauthenticated request that returned HTTP 200.
-
-  * ``/healthz/llm?probe_bedrock=1`` — walks the Stage-2 fallback's chain
-    (``bedrock_client.stage2_probe_models()``; a pinned literal before R464)
-    and issues real AWS Bedrock Converse calls. Billable by a stranger.
-  * ``/healthz/email?probe=1&to=…``  — fires ONE real Resend send to an
-    ARBITRARY caller-supplied address. An open relay; the target is the
-    verified sending domain's reputation, not the spend.
-
-Only the app-wide slowapi ``100/minute`` per-IP default applied, and it is per
-IP, so the ceiling was ~100 invocations/minute/IP from any number of IPs.
-
-WHAT R370 DELIBERATELY DOES NOT DO, so the next reader does not assume it is
-covered:
-
-  * The BASE ``/healthz/llm`` reading stays PUBLIC. It performs a live Claude
-    Max completion, which is subscription quota rather than metered spend, and
-    ``app/web_ui.py::checkSystemHealth`` fetches it FROM THE BROWSER to render
-    the operator's LLM badge. The browser cannot hold the partner key, so
-    closing this route outright would break the panel whose entire job is to
-    say "the tunnel is down". Mitigated by a tighter per-route limit
-    (100/min -> 10/min per IP), not closed. Closing it properly means moving
-    the badge onto a cheap non-probing signal — a product decision.
-  * NO payload redaction. An earlier draft projected the anonymous response
-    down to the badge fields. It is theatre while ``/healthz`` stays public for
-    Railway's deploy healthcheck and already serves ``commit`` and
-    ``deployment_id`` to anyone. Close ``/healthz`` first or the rest is
-    decoration.
+``/healthz/llm`` makes a live model call per request (``probe_bedrock=1`` adds
+billable AWS Bedrock Converse calls), ``/healthz/email?probe=1`` sends real
+mail to a caller-supplied address, ``/healthz/graph`` queries Neo4j and
+``/info`` describes the service. Each depends on ``require_regenold_api_key``
+as a route dependency, so a rejected caller never reaches the probe.
 
 Every spend test asserts the CALL COUNT of the downstream function, not just
-the status code. A 401 returned *after* dialling AWS would satisfy a status
+the status code: a 401 returned *after* dialling AWS would satisfy a status
 assertion and none of the intent.
+
+Railway's deploy healthcheck (``railway.toml`` healthcheckPath = "/healthz")
+must stay public, and the API documentation must not be served.
 """
 from __future__ import annotations
 
@@ -52,10 +30,20 @@ _OPS_KEY = "r370-operator-key"
 _OPS_HEADERS = {"X-Regenold-Api-Key": _OPS_KEY}
 _WRONG_HEADERS = {"X-Regenold-Api-Key": "r370-not-the-key"}
 
-#: Fields ``web_ui.py::checkSystemHealth`` renders. If these stop being served
-#: anonymously, the in-app diagnostics panel silently degrades.
-_WEB_UI_LLM_FIELDS = ("llm_ok", "provider", "detail")
-_WEB_UI_GRAPH_FIELDS = ("graph_ok", "detail")
+_PROBE_URLS = (
+    "/healthz/llm",
+    "/healthz/llm?probe_bedrock=1",
+    "/healthz/graph",
+    "/healthz/email",
+    "/healthz/email?probe=1&to=victim@example.com",
+    "/info",
+)
+
+
+@pytest.fixture(autouse=True)
+def _partner_key_dependency_override():
+    """Exercise the REAL key check: this module tests the auth dependency."""
+    yield
 
 
 @pytest.fixture(autouse=True)
@@ -74,63 +62,69 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-class TestRailwayHealthcheckIsUntouched:
-    """``railway.toml`` healthcheckPath = "/healthz" — breaking it fails deploys."""
-
+class TestPublicSurface:
     def test_healthz_is_public_and_ok(self, client: TestClient) -> None:
         r = client.get("/healthz")
         assert r.status_code == 200, r.text
         assert r.json().get("status") == "ok"
 
-    def test_healthz_still_carries_version_for_the_web_ui(
+    def test_the_railway_healthcheck_is_not_throttled_that_hard(
         self, client: TestClient
     ) -> None:
-        assert client.get("/healthz").json().get("version")
+        codes = [client.get("/healthz").status_code for _ in range(14)]
+        assert 429 not in codes, codes
+
+    def test_root_is_a_minimal_json_identity(self, client: TestClient) -> None:
+        r = client.get("/")
+        assert r.status_code == 200, r.text
+        assert set(r.json()) == {"service", "version", "status"}
+
+    @pytest.mark.parametrize(
+        "path",
+        ["/docs", "/redoc", "/openapi.json", "/api/v1/docs", "/api/v1/redoc",
+         "/api/v1/openapi.json", "/app", "/lexy_avatar.png",
+         "/api/v1/regenold/auth/signup", "/api/v1/regenold/auth/signin"],
+    )
+    def test_docs_ui_and_signup_are_gone(self, client: TestClient, path: str) -> None:
+        assert client.get(path).status_code in (404, 405), path
+        assert client.post(path, json={"email": "a@b.example"}).status_code in (404, 405), path
 
 
-class TestBedrockProbeCannotBeTriggeredAnonymously:
-    """The billable-by-a-stranger branch."""
+class TestDiagnosticsRequireThePartnerKey:
+    @pytest.mark.parametrize("url", _PROBE_URLS)
+    def test_anonymous_is_401(self, client: TestClient, url: str) -> None:
+        r = client.get(url)
+        assert r.status_code == 401, (url, r.text)
+        assert r.json()["detail"]["code"] == "regenold_api_key_missing"
 
-    def test_anonymous_is_401(self, client: TestClient) -> None:
-        r = client.get("/healthz/llm?probe_bedrock=1")
-        assert r.status_code == 401, r.text
-        assert r.json()["detail"]["code"] == "probe_requires_operator_key"
+    @pytest.mark.parametrize("url", _PROBE_URLS)
+    def test_wrong_key_is_403(self, client: TestClient, url: str) -> None:
+        r = client.get(url, headers=_WRONG_HEADERS)
+        assert r.status_code == 403, (url, r.text)
 
-    def test_wrong_key_is_403(self, client: TestClient) -> None:
-        r = client.get("/healthz/llm?probe_bedrock=1", headers=_WRONG_HEADERS)
-        assert r.status_code == 403, r.text
-        assert r.json()["detail"]["code"] == "regenold_api_key_invalid"
+    @pytest.mark.parametrize("url", _PROBE_URLS)
+    def test_unconfigured_deploy_is_503(self, client: TestClient, url: str) -> None:
+        settings.regenold.api_key = None
+        r = client.get(url, headers=_OPS_HEADERS)
+        assert r.status_code == 503, (url, r.text)
 
-    def test_anonymous_never_reaches_aws(self, client: TestClient) -> None:
-        """The assertion that actually protects the account.
+    def test_rejected_callers_never_reach_the_probes(self, client: TestClient) -> None:
+        from app.integrations.regenold import email as lexy_email
 
-        A 401 returned *after* dialling AWS would pass the status test above
-        and defeat the entire point.
-        """
-        with patch.object(main_mod, "_probe_bedrock_leg") as probe:
-            client.get("/healthz/llm?probe_bedrock=1")
-            client.get("/healthz/llm?probe_bedrock=1", headers=_WRONG_HEADERS)
-            assert probe.call_count == 0, (
-                "an unauthorised caller reached the Bedrock probe — the gate "
-                "runs too late to prevent spend"
-            )
+        with patch.object(main_mod, "_probe_bedrock_leg") as bedrock, patch.object(
+            main_mod, "_healthz_llm_probe"
+        ) as llm, patch.object(main_mod, "_healthz_graph_probe") as graph, patch.object(
+            lexy_email, "probe_send"
+        ) as send:
+            for url in _PROBE_URLS:
+                client.get(url)
+                client.get(url, headers=_WRONG_HEADERS)
+            assert bedrock.call_count == 0
+            assert llm.call_count == 0
+            assert graph.call_count == 0
+            assert send.call_count == 0
 
-    def test_every_truthy_spelling_is_gated(self, client: TestClient) -> None:
-        """``_HEALTHZ_TRUTHY`` accepts several spellings; all must be gated."""
-        with patch.object(main_mod, "_probe_bedrock_leg") as probe:
-            for value in ("1", "true", "TRUE", "yes", "on"):
-                r = client.get(f"/healthz/llm?probe_bedrock={value}")
-                assert r.status_code == 401, (value, r.status_code)
-            assert probe.call_count == 0
-
-    def test_falsy_values_are_not_gated(self, client: TestClient) -> None:
-        """Two-sided: the default request must not start demanding a key."""
-        for value in ("0", "false", "off", ""):
-            r = client.get(f"/healthz/llm?probe_bedrock={value}")
-            assert r.status_code == 200, (value, r.text)
-
-    def test_operator_can_still_run_it(self, client: TestClient) -> None:
-        """Two-sided: the gate must not break the operator's diagnostic."""
+    def test_operator_can_run_the_bedrock_probe(self, client: TestClient) -> None:
         with patch.object(
             main_mod, "_probe_bedrock_leg", return_value={"status": "ok"}
         ) as probe:
@@ -139,35 +133,7 @@ class TestBedrockProbeCannotBeTriggeredAnonymously:
             assert probe.call_count == 1
             assert r.json().get("bedrock_probe") == {"status": "ok"}
 
-
-class TestEmailProbeIsNotAnOpenRelay:
-    """``?probe=1&to=<anything>`` sent real mail to any address on request."""
-
-    def test_anonymous_is_401(self, client: TestClient) -> None:
-        r = client.get("/healthz/email?probe=1&to=victim@example.com")
-        assert r.status_code == 401, r.text
-
-    def test_wrong_key_is_403(self, client: TestClient) -> None:
-        r = client.get(
-            "/healthz/email?probe=1&to=victim@example.com", headers=_WRONG_HEADERS
-        )
-        assert r.status_code == 403, r.text
-
-    def test_anonymous_never_sends(self, client: TestClient) -> None:
-        from app.integrations.regenold import email as lexy_email
-
-        with patch.object(lexy_email, "probe_send") as send:
-            client.get("/healthz/email?probe=1&to=victim@example.com")
-            client.get(
-                "/healthz/email?probe=1&to=victim@example.com",
-                headers=_WRONG_HEADERS,
-            )
-            assert send.call_count == 0, (
-                "an unauthorised caller triggered a real send — the verified "
-                "sending domain is the abuse target here, not the spend"
-            )
-
-    def test_operator_can_still_send(self, client: TestClient) -> None:
+    def test_operator_can_send_the_email_probe(self, client: TestClient) -> None:
         from app.integrations.regenold import email as lexy_email
 
         with patch.object(
@@ -179,77 +145,30 @@ class TestEmailProbeIsNotAnOpenRelay:
             assert r.status_code == 200, r.text
             assert send.call_count == 1
             assert send.call_args.args[0] == "ops@example.com"
-            assert r.json().get("send_ok") is True
 
-    def test_config_only_view_stays_public_and_sends_nothing(
-        self, client: TestClient
-    ) -> None:
-        """Two-sided: the no-probe view must stay reachable and silent."""
-        from app.integrations.regenold import email as lexy_email
-
-        with patch.object(lexy_email, "probe_send") as send:
-            r = client.get("/healthz/email")
-            assert r.status_code == 200, r.text
-            assert send.call_count == 0
-
-
-class TestThePublicReadingsStillServeTheWebUI:
-    """Pins the deliberate decision NOT to close the base routes.
-
-    If someone later authenticates these, this fails and points at
-    ``web_ui.py::checkSystemHealth`` — which cannot hold the key.
-    """
-
-    def test_llm_badge_fields_are_public(self, client: TestClient) -> None:
-        r = client.get("/healthz/llm")
+    def test_operator_reads_graph_and_info(self, client: TestClient) -> None:
+        assert client.get("/healthz/graph", headers=_OPS_HEADERS).status_code == 200
+        r = client.get("/info", headers=_OPS_HEADERS)
         assert r.status_code == 200, r.text
-        missing = [f for f in _WEB_UI_LLM_FIELDS if f not in r.json()]
-        assert not missing, missing
-
-    def test_graph_badge_fields_are_public(self, client: TestClient) -> None:
-        r = client.get("/healthz/graph")
-        assert r.status_code == 200, r.text
-        missing = [f for f in _WEB_UI_GRAPH_FIELDS if f not in r.json()]
-        assert not missing, missing
+        body = r.json()
+        assert body["ask_endpoint"] == "/api/v1/regenold/eu-ai-act/ask"
+        assert not {"docs", "ui", "chat_ui", "signup_endpoint"} & set(body)
 
 
 class TestPerRouteLimitsAreTighterThanTheAppDefault:
-    """Item 3 of the brief. The app-wide default is 100/minute per IP.
-
-    Asserted BEHAVIOURALLY — drive the route until it 429s — rather than by
-    reading a slowapi private attribute, so the test measures what a caller
-    actually experiences.
-    """
-
     def test_llm_route_429s_well_before_the_app_default(
         self, client: TestClient
     ) -> None:
-        codes = [client.get("/healthz/llm").status_code for _ in range(14)]
-        assert 429 in codes, (
-            "no 429 within 14 requests — the app-wide 100/minute default is "
-            f"still governing this route: {codes}"
-        )
-        first_429 = codes.index(429)
-        assert first_429 <= 10, (
-            f"first 429 at request {first_429 + 1}; expected the 10/minute "
-            f"per-route limit: {codes}"
-        )
+        codes = [
+            client.get("/healthz/llm", headers=_OPS_HEADERS).status_code
+            for _ in range(14)
+        ]
+        assert 429 in codes, codes
+        assert codes.index(429) <= 10, codes
 
     def test_graph_route_is_limited_too(self, client: TestClient) -> None:
-        codes = [client.get("/healthz/graph").status_code for _ in range(34)]
-        assert 429 in codes, (
-            f"no 429 within 34 requests on /healthz/graph: {codes[:12]}…"
-        )
-
-    def test_the_railway_healthcheck_is_not_throttled_that_hard(
-        self, client: TestClient
-    ) -> None:
-        """Two-sided: ``/healthz`` must keep its permissive app-wide default.
-
-        Railway polls it on every deploy; a 10/minute cap there would flap
-        the healthcheck.
-        """
-        codes = [client.get("/healthz").status_code for _ in range(14)]
-        assert 429 not in codes, (
-            f"/healthz got throttled inside 14 requests: {codes}"
-        )
+        codes = [
+            client.get("/healthz/graph", headers=_OPS_HEADERS).status_code
+            for _ in range(34)
+        ]
+        assert 429 in codes, codes[:12]

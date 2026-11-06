@@ -64,7 +64,7 @@ npx @railway/cli redeploy --yes --from-source
 curl https://regenold-eu-ai-act-rag-production.up.railway.app/healthz
 curl https://regenold-eu-ai-act-rag-production.up.railway.app/healthz/llm
 curl https://regenold-eu-ai-act-rag-production.up.railway.app/healthz/graph
-curl https://regenold-eu-ai-act-rag-production.up.railway.app/app   # 200 = this service
+curl https://regenold-eu-ai-act-rag-production.up.railway.app/   # 200 JSON identity = this service; /healthz/llm and /healthz/graph need X-Regenold-Api-Key
 ```
 
 **To confirm a specific commit is live, use `/healthz/llm` — it returns the deployed
