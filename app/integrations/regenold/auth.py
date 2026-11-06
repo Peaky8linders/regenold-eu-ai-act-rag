@@ -7,7 +7,6 @@ from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 
 from app.config import settings
-from app.integrations.regenold.user_store import is_registered_user_key
 
 _regenold_header = APIKeyHeader(name="X-Regenold-Api-Key", auto_error=False)
 
@@ -16,23 +15,6 @@ def _configured_key() -> str | None:
     if not settings.regenold.api_key:
         return None
     return settings.regenold.api_key.get_secret_value()
-
-
-def is_known_regenold_key(api_key: str | None) -> bool:
-    """True for the configured partner key OR any key minted by the Lexy
-    sign-up funnel (see :mod:`app.integrations.regenold.user_store`).
-
-    Used by the anonymous-friendly Q&A route's optional-auth dep + the
-    rate-limit key func so a freshly-issued ``lexy_sk_...`` key is honoured
-    (and gets the privileged tier) instead of being 403'd / downgraded.
-    Kept SEPARATE from :func:`validate_regenold_api_key` so the strict
-    partner-only :func:`require_regenold_api_key` is unaffected.
-    """
-    if not api_key:
-        return False
-    if validate_regenold_api_key(api_key):
-        return True
-    return is_registered_user_key(api_key)
 
 
 def validate_regenold_api_key(api_key: str) -> bool:
@@ -58,12 +40,10 @@ def validate_regenold_api_key(api_key: str) -> bool:
 async def require_regenold_api_key(
     api_key: Annotated[str | None, Security(_regenold_header)] = None,
 ) -> str:
-    """Strict-auth dep — kept for back-compat / future privileged routes.
+    """Strict-auth dep: only the configured partner key passes.
 
-    Not used by the public Regenold Q&A route any more (the competition
-    feature is anonymous-friendly via :func:`optional_regenold_api_key`).
-    Kept available so a future internal-only route can opt in to the
-    fail-closed posture without re-implementing the validator.
+    Guards the Q&A route and the diagnostics routes. 503 when no key is
+    configured, 401 when none is sent, 403 when it does not match.
     """
     if not _configured_key():
         # Staged-but-inactive posture (same pattern as OAuth): ship code
@@ -94,54 +74,4 @@ async def require_regenold_api_key(
     return api_key
 
 
-async def optional_regenold_api_key(
-    api_key: Annotated[str | None, Security(_regenold_header)] = None,
-) -> str | None:
-    """Optional-auth dep — returns the validated key or None.
-
-    Powers the anonymous-friendly Regenold partner endpoint
-    (``POST /regenold/eu-ai-act/ask``) — this is a competition
-    deliverable, so the route must be reachable WITHOUT a partner key.
-
-    Contract:
-    - No header (key absent) → return ``None`` (anonymous tier).
-    - Header present + matches configured key → return the key (privileged tier).
-    - Header present but does NOT match → raise 403 (typo'd keys still fail loudly).
-    - Deployment has no configured key (``_configured_key() is None``):
-      header is ignored AND no 503 is raised — anonymous traffic flows
-      regardless of partner-key provisioning. The route layer determines
-      the tier from this dep's return value.
-
-    The route layer combines this with two stacked rate-limit buckets
-    (60/min for the privileged tier, 30/min per IP for anonymous) and
-    distinct evidence-chain ``tenant_id`` stamps so an auditor can
-    distinguish partner traffic from public traffic in the chain.
-
-    Lexy funnel (R-signup): a header matching the configured partner key
-    OR any key minted by the sign-up funnel is accepted (privileged tier).
-    """
-    if not api_key:
-        return None
-    if is_known_regenold_key(api_key):
-        # Partner key OR a funnel-issued user key → privileged tier.
-        return api_key
-    if not _configured_key():
-        # No configured partner key on this deployment AND the header is
-        # not a known user key — treat any stray header as anonymous
-        # instead of 403 (back-compat: provisioning shouldn't hard-fail
-        # an otherwise-anonymous deploy).
-        return None
-    # A partner key IS configured but the header matches neither it nor
-    # any user key: typo / stale key / wrong tenant. Fail loudly so the
-    # caller notices instead of being silently downgraded.
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail={
-            "code": "regenold_api_key_invalid",
-            "message": "Invalid API key.",
-        },
-    )
-
-
 RequireRegenold = Depends(require_regenold_api_key)
-OptionalRegenold = Depends(optional_regenold_api_key)

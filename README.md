@@ -12,7 +12,7 @@ The service implements a hybrid, additive neuro-symbolic retrieval and generatio
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ POST /api/v1/regenold/eu-ai-act/ask       (+ Lexy chat UI at /)  │
+│ POST /api/v1/regenold/eu-ai-act/ask       (partner key required) │
 │      messages (OpenAI/LiteLLM history) → answer + references     │
 └────────────────────────────┬─────────────────────────────────────┘
                              │

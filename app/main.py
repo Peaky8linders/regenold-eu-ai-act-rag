@@ -10,16 +10,16 @@ import logging
 import math
 import os
 import threading as _threading
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Request
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import settings
 from app.llm import resolve_provider
 from app.rate_limit import limiter, rate_limit_handler
-from app.routes.auth import auth_router
+from app.integrations.regenold.auth import require_regenold_api_key
 from app.routes.regenold import regenold_router
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,9 @@ app = FastAPI(
         "transparency review. Exposes the same Regenold grounded Q&A "
         "surface as the parent repo."
     ),
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 
@@ -61,12 +64,14 @@ app.add_middleware(SlowAPIMiddleware)
 api_v1 = FastAPI(
     title="Regenold EU AI Act RAG — API v1",
     version=settings.version,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 api_v1.state.limiter = limiter
 api_v1.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 api_v1.add_middleware(SlowAPIMiddleware)
 api_v1.include_router(regenold_router)
-api_v1.include_router(auth_router)
 
 
 app.mount("/api/v1", api_v1)
@@ -917,81 +922,16 @@ def _deploy_identity() -> dict[str, str]:
     }
 
 
-#: R321 — the live Groq probe on ``/healthz`` is OPT-IN and default OFF.
-#:
-#: ``railway.toml`` sets ``healthcheckPath = "/healthz"`` with
-#: ``healthcheckTimeout = 30``. As shipped this handler fired a real Groq
-#: completion with ``max_tokens=1024`` and NO ``timeout_seconds``, so the
-#: budget fell back to the provider singleton's ``GROQ_TIMEOUT_SECONDS``
-#: default of 60 s — twice the healthcheck budget — and the 429 arm adds a
-#: sleep plus a SECOND POST inside that same deadline. A slow or rate-limited
-#: Groq could therefore hold the deploy healthcheck past its timeout and fail
-#: the release. Observed live on 2026-08-07: ``/healthz`` returned
-#: ``fallback_test.error = "api_status_429 ... TPD Limit 200000, Used 199382"``,
-#: i.e. the probe was really running against a rate-limited account on the
-#: deploy path.
-#:
-#: A deploy healthcheck must answer one question — is this process serving? —
-#: cheaply and deterministically. Live provider probing already has a purpose
-#: -built endpoint (``/healthz/llm``), which is where it belongs. Set
-#: ``REGENOLD_HEALTHZ_PROBE=1`` to re-enable it here for debugging; even then
-#: it is bounded well inside the healthcheck budget.
-_HEALTHZ_PROBE_TIMEOUT_S = 5.0
-_HEALTHZ_PROBE_MAX_TOKENS = 16
-
-
-def _healthz_probe_enabled() -> bool:
-    return os.getenv("REGENOLD_HEALTHZ_PROBE", "0").strip().lower() in {
-        "1", "true", "yes", "on",
-    }
-
-
 @app.get("/healthz")
 def healthz() -> dict[str, object]:
-    from app.llm.openai_wrapper_provider import is_groq_provider_enabled, get_groq_provider, OpenAIWrapperRequest, default_groq_model
-    fallback_status = None
-    fallback_error = None
-    fallback_text = None
-    fallback_finish_reason = None
-    fallback_model = None
+    """Railway's deploy healthcheck: cheap, public, no provider call.
 
-    if _healthz_probe_enabled() and is_groq_provider_enabled():
-        try:
-            prov = get_groq_provider()
-            resp = prov.complete(
-                OpenAIWrapperRequest(
-                    system="You are a regulation expert. Answer concisely.",
-                    user="What is a general purpose AI model under the AI Act?",
-                    model=default_groq_model(),
-                    max_tokens=_HEALTHZ_PROBE_MAX_TOKENS,
-                    temperature=0.0,
-                    timeout_seconds=_HEALTHZ_PROBE_TIMEOUT_S,
-                )
-            )
-            fallback_model = resp.model
-            fallback_finish_reason = resp.finish_reason
-            if resp.error:
-                fallback_status = "error"
-                fallback_error = resp.error
-            else:
-                fallback_status = "ok"
-                fallback_text = resp.text
-        except Exception as e:
-            fallback_status = "exception"
-            fallback_error = str(e)
-            
+    Live provider probing lives on the partner-key-gated ``/healthz/llm``.
+    """
     return {
         "status": "ok",
         "version": settings.version,
         **_deploy_identity(),
-        "is_groq_enabled": is_groq_provider_enabled(),
-        "fallback_test": {
-            "status": fallback_status,
-            "error": fallback_error,
-            "finish_reason": fallback_finish_reason,
-            "model": fallback_model,
-            "text": fallback_text[:500] if fallback_text else None,
-        }
     }
 
 
@@ -1718,229 +1658,61 @@ def _healthz_graph_probe() -> dict[str, object]:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# R370 — operator-only live probes
+# Diagnostics are partner-only
 # ══════════════════════════════════════════════════════════════════════════
 #
-# Three health endpoints spent real money, real quota, or real sending
-# reputation on behalf of an ANONYMOUS caller, and leaked deployment detail
-# while doing it. All three were publicly reachable on production; verified
-# with an unauthenticated request that returned HTTP 200 with the model id,
-# token counts, deployment id, pid, CF Access booleans and the Stage-2
-# transport chain.
-#
-#   * ``/healthz/llm``                  — one LIVE Claude Max completion per
-#                                         request through the tunnel.
-#   * ``/healthz/llm?probe_bedrock=1``  — walks the Stage-2 fallback's chain
-#                                         (``stage2_probe_models()``; a pinned
-#                                         literal before R464) and issues real
-#                                         AWS Bedrock Converse calls. BILLABLE
-#                                         by a stranger.
-#   * ``/healthz/email?probe=1&to=…``   — fires ONE real Resend send to an
-#                                         ARBITRARY address. An open relay:
-#                                         the abuse target is the sending
-#                                         domain's reputation, not the spend.
-#
-# Only the app-wide slowapi ``100/minute`` per-IP default applied, and it is
-# per IP, so the ceiling was ~100 invocations/minute/IP from any number of IPs.
-#
-# THE FIX IS TIERED, NOT A BLANKET 401, because two consumers must keep
-# working:
-#   1. Railway's deploy healthcheck (``railway.toml`` healthcheckPath) hits
-#      ``GET /healthz``. That route is untouched — it stays public, cheap and
-#      probe-free.
-#   2. The in-app diagnostics panel (``app/web_ui.py::checkSystemHealth``)
-#      fetches ``/healthz/llm`` and ``/healthz/graph`` FROM THE BROWSER and
-#      reads only ``llm_ok`` / ``graph_ok`` / ``provider`` / ``detail``. It
-#      cannot hold the partner key, so a blanket 401 would break the panel
-#      that exists to tell an operator the tunnel is down.
-#
-# So: anonymous callers keep the badge fields and lose everything else; the
-# SPENDING branches require the partner key outright; and both probe routes
-# carry a tighter per-route limit than the app default.
-#
-# ⚠ ``/healthz`` still reports ``commit`` and ``deployment_id`` to anonymous
-# callers. Left as-is deliberately — it is the Railway healthcheck path and
-# the web UI reads ``version`` from it — but it is the same information-leak
-# class and worth a separate decision.
+# ``/healthz/llm`` makes one LIVE model completion per call (``probe_bedrock=1``
+# also issues billable AWS Bedrock calls), ``/healthz/email?probe=1`` sends real
+# mail, and ``/info`` describes the service. All four require the configured
+# partner key through ``require_regenold_api_key`` as a ROUTE dependency, so an
+# anonymous caller gets 401 (wrong key 403, no configured key 503) before any
+# probe, model call or send runs. Only ``/healthz`` stays public: Railway's
+# deploy healthcheck (``railway.toml`` healthcheckPath) hits it. It returns
+# only status, version, commit and deployment id and makes no provider call.
 
-# ⚠ NO PAYLOAD REDACTION, deliberately. An earlier draft of R370 projected the
-# anonymous response down to the badge fields. It was dropped, because it is
-# THEATRE while ``/healthz`` exists: that route must stay public for Railway's
-# deploy healthcheck and it already serves ``commit`` and ``deployment_id`` to
-# anonymous callers. Hiding the same two values one route over buys nothing,
-# and the residue (pid, CF Access booleans, the Stage-2 counters, the model id)
-# is low-grade operational detail — not worth re-pointing 22 existing probe
-# tests at an authenticated client, which would also mean mutating the
-# ``settings.regenold.api_key`` singleton in five more files right after #363
-# landed a fixture to stop exactly that leaking across tests.
-#
-# What R370 actually closes is SPEND and SENDING, which is where the real
-# exposure was. If the information leak is worth closing later, close it at
-# ``/healthz`` first or the rest is decoration.
-
-def _probe_caller_is_operator(api_key: str | None) -> bool:
-    """True only for the CONFIGURED PARTNER KEY.
-
-    Deliberately ``validate_regenold_api_key`` and not ``is_known_regenold_key``:
-    the latter also accepts any ``lexy_sk_…`` minted by the public sign-up
-    funnel, and a self-service signup must not be able to trigger AWS spend or
-    a Resend send. Fail-closed on any error — an unreadable key is not an
-    operator.
-    """
-    if not api_key:
-        return False
-    try:
-        from app.integrations.regenold.auth import validate_regenold_api_key
-
-        return validate_regenold_api_key(api_key)
-    except Exception:  # noqa: BLE001 — fail closed, never 500 a health route
-        return False
+_PARTNER_ONLY = [Depends(require_regenold_api_key)]
 
 
-def _redact_probe_payload(
-    payload: dict[str, object], allowed: tuple[str, ...]
-) -> dict[str, object]:
-    """Allowlist projection — additive keys can never leak by default."""
-    return {k: payload[k] for k in allowed if k in payload}
-
-
-def _require_operator_for_spend(api_key: str | None, reason: str) -> None:
-    """401/403 for the branches that spend money or send mail.
-
-    Mirrors ``require_regenold_api_key``'s status semantics so a client sees
-    the same shapes it already handles: 401 when no key was presented, 403
-    when one was presented and did not match.
-    """
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "code": "probe_requires_operator_key",
-                "message": (
-                    f"{reason} Provide the operator key via X-Regenold-Api-Key."
-                ),
-            },
-        )
-    if not _probe_caller_is_operator(api_key):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "regenold_api_key_invalid",
-                "message": "Invalid API key.",
-            },
-        )
-
-
-# ⚠ NO ANONYMOUS RESULT CACHE either, and for the same reason the redaction
-# was dropped. A 30 s TTL cache was drafted here: it cut five anonymous
-# requests to one live completion, which is real. But ``/healthz/llm`` is a
-# PROBE, and ~20 existing tests patch the provider and then assert on the
-# reading — a cached reply serves them the previous test's answer, so the
-# cache turned a deterministic diagnostic into an order-dependent one. Making
-# it testable would mean a reset fixture in five more files.
-#
-# The per-route limit below carries this instead: 100/min -> 10/min per IP is a
-# 10x cut, and the leg that costs actual MONEY (Bedrock) is hard-gated, not
-# merely slowed. What remains is Claude Max subscription quota under a flat
-# subscription. If that needs closing, the right fix is an auth requirement on
-# the base route plus a cheap non-probing signal on ``/healthz`` for the web
-# UI badge — a deliberate product decision, not something to smuggle in behind
-# a cache.
-
-@app.get("/healthz/llm")
+@app.get("/healthz/llm", dependencies=_PARTNER_ONLY)
 @limiter.limit("10/minute")
-def healthz_llm(
-    request: Request,
-    probe_bedrock: str = "0",
-    x_regenold_api_key: Annotated[str | None, Header()] = None,
-) -> dict[str, object]:
-    """Live LLM-path probe.
-
-    ``probe_bedrock=1`` is operator-only (it spends). The base reading stays
-    public because ``app/web_ui.py::checkSystemHealth`` renders it from the
-    browser and cannot hold the key — but anonymous callers share one cached
-    reading, so a flood cannot multiply live completions.
-    """
-    operator = _probe_caller_is_operator(x_regenold_api_key)
-    wants_bedrock = str(probe_bedrock).strip().lower() in _HEALTHZ_TRUTHY
-    if wants_bedrock:
-        _require_operator_for_spend(
-            x_regenold_api_key,
-            "probe_bedrock=1 issues billable AWS Bedrock Converse calls.",
-        )
-    return _healthz_llm_probe(probe_bedrock if operator else "0")
+def healthz_llm(request: Request, probe_bedrock: str = "0") -> dict[str, object]:
+    """Live LLM-path probe (partner key required)."""
+    return _healthz_llm_probe(probe_bedrock)
 
 
-@app.get("/healthz/graph")
+@app.get("/healthz/graph", dependencies=_PARTNER_ONLY)
 @limiter.limit("30/minute")
 def healthz_graph(request: Request) -> dict[str, object]:
-    """Neo4j connectivity + seed status. Public; carries a tighter per-route limit.
-
-    No third-party spend here — the probe hits the project's own Neo4j — so
-    this wrapper exists only to replace the app-wide 100/min default.
-    """
+    """Neo4j connectivity + seed status (partner key required)."""
     return _healthz_graph_probe()
 
 
-@app.get("/healthz/email")
+@app.get("/healthz/email", dependencies=_PARTNER_ONLY)
 @limiter.limit("10/minute")
 def healthz_email(
     request: Request,
     probe: int = 0,
     to: str = "lexy-health-probe@example.com",
-    x_regenold_api_key: Annotated[str | None, Header()] = None,
 ) -> dict[str, object]:
-    """Resend config snapshot. ``?probe=1`` sends real mail and needs the key.
-
-    The ``to`` parameter is caller-controlled, so the ungated version was an
-    open relay against the verified sending domain.
-    """
-    if probe:
-        _require_operator_for_spend(
-            x_regenold_api_key,
-            "probe=1 sends real mail to a caller-supplied address.",
-        )
+    """Resend config snapshot. ``?probe=1`` sends real mail (partner key required)."""
     return _healthz_email_probe(probe=probe, to=to)
 
 
-@app.get("/info")
+@app.get("/info", dependencies=_PARTNER_ONLY)
 def info() -> dict[str, str]:
-    """Machine-readable service descriptor.
-
-    Moved from ``/`` to ``/info`` so the interactive Lexy chat UI
-    (registered by :func:`app.web_ui.register_web_routes`) can own the
-    root path as the human-facing competition landing page. Programmatic
-    consumers that previously hit ``/`` for the JSON descriptor use
-    ``/info``; the wire contract ``POST /api/v1/regenold/eu-ai-act/ask``
-    is unchanged.
-    """
+    """Machine-readable service descriptor (partner key required)."""
     return {
         "service": "regenold-eu-ai-act-rag",
         "version": settings.version,
-        "docs": "/docs",
-        "ui": "/",
-        "chat_ui": "/app",
-        "signup_endpoint": "/api/v1/regenold/auth/signup",
         "ask_endpoint": "/api/v1/regenold/eu-ai-act/ask",
     }
 
 
-# ─── Sign-up funnel (/) + interactive Lexy chat (/app) ───────────────────
-# Registered LAST so they mount on the root app after ``/api/v1`` and the
-# ``/healthz*`` probes are already bound — no path collision. Both are
-# static, self-contained HTML pages that inject NO server-side secret
-# (keys are minted by the API at runtime; the user's key rides the URL
-# fragment into the chat). Funnel owns ``/``; chat owns ``/app``.
-# Failure to register the UI must never block the API, so it is
-# best-effort.
-try:
-    from app.funnel_ui import register_funnel_routes
-    from app.web_ui import register_web_routes
-
-    register_web_routes(app)        # /app + /lexy_avatar.png
-    register_funnel_routes(app)     # /
-except Exception as _ui_exc:  # noqa: BLE001 — UI is optional; never block the API
-    logger.warning(
-        "regenold.startup web/funnel UI registration skipped: %s — API unaffected",
-        _ui_exc,
-    )
+@app.get("/")
+def root() -> dict[str, str]:
+    """Minimal public identity. No links, no UI, no key issuance."""
+    return {
+        "service": "regenold-eu-ai-act-rag",
+        "version": settings.version,
+        "status": "ok",
+    }

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
 from app.config import settings
 from app.main import app
+
+
+@pytest.fixture(autouse=True)
+def _partner_key_dependency_override():
+    """Exercise the REAL key check: this module tests the auth dependency."""
+    yield
 
 
 def _client() -> TestClient:
@@ -15,26 +22,20 @@ def _messages(content: str) -> list[dict[str, str]]:
     return [{"role": "user", "content": content}]
 
 
-def test_regenold_endpoint_missing_key_allows_anonymous() -> None:
-    """Auth is OPTIONAL (commit 37ba624) — a request with no
-    X-Regenold-Api-Key header is served on the anonymous tier (200), not
-    rejected. The partner endpoint is a competition deliverable that must
-    be reachable WITHOUT a key. A PRESENT-but-wrong key still 403s — see
-    ``test_regenold_endpoint_rejects_invalid_key``."""
+def test_regenold_endpoint_missing_key_is_rejected() -> None:
+    """Anonymous callers cannot trigger a metered Q&A fallback."""
     settings.regenold.api_key = SecretStr("regenold-test-key")
     c = _client()
     r = c.post(
         "/api/v1/regenold/eu-ai-act/ask",
         json=_messages("What does EU AI Act Art. 13(1)(a) require?"),
     )
-    assert r.status_code == 200, r.json()
-    body = r.json()
-    assert "answer" in body and isinstance(body["answer"], str)
-    assert "references" in body and isinstance(body["references"], list)
+    assert r.status_code == 401, r.json()
+    assert r.json()["detail"]["code"] == "regenold_api_key_missing"
 
 
 def test_regenold_endpoint_rejects_invalid_key() -> None:
-    """Header present but invalid → 403, NOT silent downgrade to anonymous.
+    """Header present but invalid → 403.
 
     Silent downgrade would mask partner-side typos / stale keys. The
     explicit 403 makes the partner notice and rotate.
@@ -49,12 +50,8 @@ def test_regenold_endpoint_rejects_invalid_key() -> None:
     assert r.status_code == 403
 
 
-def test_regenold_endpoint_unconfigured_deploy_allows_anonymous() -> None:
-    """Deployment with no configured key → anonymous traffic still flows
-    (200), no 503. Per ``optional_regenold_api_key`` (commit 37ba624 made
-    auth optional), an unprovisioned deploy ignores any header and serves
-    the anonymous tier rather than hard-failing.
-    """
+def test_regenold_endpoint_unconfigured_deploy_is_closed() -> None:
+    """No partner credential configured means no billable Q&A work."""
     settings.regenold.api_key = None  # Unconfigured deploy
     try:
         c = _client()
@@ -63,7 +60,8 @@ def test_regenold_endpoint_unconfigured_deploy_allows_anonymous() -> None:
             headers={"X-Regenold-Api-Key": "anything-since-no-config"},
             json=_messages("Summarise EU AI Act Art. 13."),
         )
-        assert r.status_code == 200, r.json()
+        assert r.status_code == 503, r.json()
+        assert r.json()["detail"]["code"] == "regenold_not_configured"
     finally:
         # Reset for the rest of the suite which expects a configured key.
         settings.regenold.api_key = SecretStr("regenold-test-key")
@@ -442,64 +440,7 @@ def test_p1_evidence_chain_helper_records_full_hash() -> None:
     assert h != bare
 
 
-# ─── Optional-auth (public competition) tier guards ────────────────────────
-
-
-def test_optional_auth_dep_returns_none_without_header() -> None:
-    """Pure unit test: the dep returns None, doesn't raise, on no header."""
-    import asyncio
-
-    from app.integrations.regenold.auth import optional_regenold_api_key
-
-    result = asyncio.run(optional_regenold_api_key(api_key=None))
-    assert result is None
-
-
-def test_optional_auth_dep_returns_key_on_match() -> None:
-    """Pure unit test: matching header returns the raw key for downstream use."""
-    import asyncio
-
-    from app.integrations.regenold.auth import optional_regenold_api_key
-
-    settings.regenold.api_key = SecretStr("regenold-test-key")
-    result = asyncio.run(optional_regenold_api_key(api_key="regenold-test-key"))
-    assert result == "regenold-test-key"
-
-
-def test_optional_auth_dep_raises_403_on_invalid_header() -> None:
-    """Pure unit test: invalid header still raises 403 (no silent downgrade)."""
-    import asyncio
-
-    from fastapi import HTTPException
-
-    from app.integrations.regenold.auth import optional_regenold_api_key
-
-    settings.regenold.api_key = SecretStr("regenold-test-key")
-    try:
-        asyncio.run(optional_regenold_api_key(api_key="wrong"))
-    except HTTPException as exc:
-        assert exc.status_code == 403
-        assert exc.detail.get("code") == "regenold_api_key_invalid"
-    else:
-        raise AssertionError("expected HTTPException(403)")
-
-
-def test_optional_auth_dep_unconfigured_returns_none_for_any_header() -> None:
-    """Pure unit test: unconfigured deploy + header → None (not 503, not 403)."""
-    import asyncio
-
-    from app.integrations.regenold.auth import optional_regenold_api_key
-
-    saved = settings.regenold.api_key
-    settings.regenold.api_key = None
-    try:
-        assert asyncio.run(optional_regenold_api_key(api_key=None)) is None
-        assert asyncio.run(optional_regenold_api_key(api_key="anything")) is None
-    finally:
-        settings.regenold.api_key = saved
-
-
-def test_dynamic_limit_resolves_60_for_authed_30_for_anon() -> None:
+def test_dynamic_limit_resolves_60_for_partner_key_30_fallback() -> None:
     """Pin the dynamic-limit string mapping (private slowapi contract)."""
     from app.routes.regenold import (
         _RATE_KEY_PREFIX_ANON,
@@ -509,14 +450,12 @@ def test_dynamic_limit_resolves_60_for_authed_30_for_anon() -> None:
 
     assert _regenold_dynamic_limit(f"{_RATE_KEY_PREFIX_AUTHED}abc123") == "60/minute"
     assert _regenold_dynamic_limit(f"{_RATE_KEY_PREFIX_ANON}deadbeef") == "30/minute"
-    # Defensive fallback — unknown prefix falls to conservative anon tier.
+    # Defensive fallback — unknown prefix falls to the conservative tier.
     assert _regenold_dynamic_limit("unknown-prefix:zzz") == "30/minute"
 
 
-def test_unauthenticated_request_allows_anonymous_and_is_audited() -> None:
-    """Auth is OPTIONAL (commit 37ba624) — a no-header request is served on
-    the anonymous tier (200) and is still written to the audit chain (every
-    served request is recorded, regardless of tier)."""
+def test_unauthenticated_request_does_not_create_a_qa_record() -> None:
+    """Rejected requests must stop before Q&A or its evidence append."""
     from app.evidence.store import get_evidence_store
 
     settings.regenold.api_key = SecretStr("regenold-test-key")
@@ -528,10 +467,10 @@ def test_unauthenticated_request_allows_anonymous_and_is_audited() -> None:
         "/api/v1/regenold/eu-ai-act/ask",
         json=_messages("Summarise EU AI Act Art. 26."),
     )
-    assert r.status_code == 200, r.json()
+    assert r.status_code == 401, r.json()
 
     after = len(list(store.get_chain(tenant_id="partner:regenold", limit=1000)))
-    assert after > before, "served (anonymous) request should be recorded in the audit chain"
+    assert after == before, "a rejected request must not execute the Q&A handler"
 
 
 def test_authenticated_request_writes_partner_tenant_chain_entry() -> None:

@@ -1,23 +1,13 @@
 """Regenold partner integration — grounded EU AI Act Q&A.
 
-Public surface for the Regenold regulatory-AI agent's grounded Q&A
-contest entry. Authentication is OPTIONAL — the route is reachable
-without a partner key (this is a competition deliverable; gating on a
-private key would defeat the entry's discoverability).
+Partner-only surface for the Regenold regulatory-AI agent's grounded Q&A.
+Every request requires the configured partner ``X-Regenold-Api-Key``.
+Missing credentials return 401, invalid or self-service signup keys return
+403, and an unconfigured deployment returns 503 before Q&A work starts.
+This prevents anonymous traffic from triggering metered model fallbacks.
 
-Tier resolution at request time:
-
-* **Privileged tier** — caller sends a valid ``X-Regenold-Api-Key``
-  header. Rate limit 60/min keyed on the sha256 truncation of the key;
-  evidence chain stamps ``tenant_id="partner:regenold"`` so an auditor
-  can filter partner traffic without seeing the raw key.
-* **Anonymous tier** — no header (or no configured key on this deploy).
-  Rate limit 30/min keyed on the IP-hash; tenant stamps
-  ``"public:regenold-anon"`` plus a 16-hex IP hash on the chain payload
-  for forensic traceability under GDPR Art. 4(5) pseudonymisation.
-
-Header present but invalid (typo / stale / wrong tenant) still 403s —
-silent downgrade to anonymous would mask partner-side bugs.
+Valid partner requests retain the 60/minute key-scoped rate limit and
+``tenant_id="partner:regenold"`` evidence chain.
 
 Backed by the existing Graph RAG engine — this route is a thin
 adapter that reshapes the response into Regenold's expected wire shape
@@ -97,8 +87,8 @@ from app.evidence.models import EvidenceEntryType
 from app.evidence.store import get_evidence_store
 from app.integrations.regenold.answer_normaliser import answer_has_enumeration
 from app.integrations.regenold.auth import (
-    is_known_regenold_key,
-    optional_regenold_api_key,
+    require_regenold_api_key,
+    validate_regenold_api_key,
 )
 from app.integrations.regenold.lexy_gate import (
     classify_safety_intent,
@@ -2474,8 +2464,9 @@ _NO_MATCH_ANSWER = (
 
 
 # Tier prefixes — used by both the rate-limit key_func and the dynamic
-# limit resolver below. The prefix is the public discriminator between
-# the privileged + anonymous buckets, so they NEVER share storage.
+# limit resolver below. Only the partner key reaches the handler (the auth
+# dependency rejects everything else first); the IP bucket is a defensive
+# fallback for a request that never presented a valid key.
 _RATE_KEY_PREFIX_AUTHED = "regenold-key:"
 _RATE_KEY_PREFIX_ANON = "regenold-anon:"
 
@@ -2677,8 +2668,7 @@ def _hash16(value: str) -> str:
 
 
 # Trust X-Forwarded-For only when the deploy explicitly opts in by
-# setting REGENOLD_TRUST_PROXY=true. Without this, an anonymous-tier
-# attacker behind any CDN could spoof XFF to bypass the per-IP bucket.
+# setting REGENOLD_TRUST_PROXY=true. Without this, a caller behind any CDN could spoof XFF to bypass the per-IP bucket.
 # Default = OFF (use direct socket address). The README + .env.example
 # both document the trust-boundary requirement.
 _TRUST_PROXY = os.getenv("REGENOLD_TRUST_PROXY", "").strip().lower() in {
@@ -2709,21 +2699,15 @@ def _client_addr(request: Request) -> str:
 def _regenold_rate_key(request: Request) -> str:
     """Return the rate-limit bucket key for this request.
 
-    Privileged tier: the caller sent a valid ``X-Regenold-Api-Key`` —
-    bucket prefix ``regenold-key:`` so 60/min applies (see
-    :func:`_regenold_dynamic_limit`).
-
-    Anonymous tier: no header OR no configured key on this deploy —
-    bucket prefix ``regenold-anon:`` with a 16-hex IP hash so the
-    30/min budget is per-source-IP rather than global. The raw IP is
-    never stored. When ``REGENOLD_TRUST_PROXY=true``, the IP is read
-    from ``X-Forwarded-For`` (leftmost) instead of the direct socket.
-
-    The two tiers are stored under DIFFERENT keys, so a flood of anon
-    traffic cannot exhaust a partner's privileged 60/min budget.
+    A valid partner ``X-Regenold-Api-Key`` is bucketed by the key's hash
+    (prefix ``regenold-key:``, 60/min). The route's auth dependency rejects
+    every other caller before the handler runs, so the per-IP
+    ``regenold-anon:`` bucket (16-hex IP hash, raw IP never stored; honours
+    ``X-Forwarded-For`` only with ``REGENOLD_TRUST_PROXY=true``) is only a
+    defensive fallback.
     """
     api_key = request.headers.get("X-Regenold-Api-Key", "")
-    if api_key and is_known_regenold_key(api_key):
+    if api_key and validate_regenold_api_key(api_key):
         return f"{_RATE_KEY_PREFIX_AUTHED}{_hash16(api_key)}"
     return f"{_RATE_KEY_PREFIX_ANON}{_hash16(_client_addr(request))}"
 
@@ -2735,11 +2719,9 @@ def _regenold_dynamic_limit(key: str) -> str:
     ``key_func(request)`` value when the limit_value signature
     declares a ``key`` parameter (see :class:`slowapi.wrappers.LimitGroup`).
 
-    - ``regenold-key:<hash>`` → ``60/minute`` (partner tier)
-    - ``regenold-anon:<hash>`` → ``30/minute`` (public tier)
-    - anything else → conservative anon tier (defensive fallback;
-      should never hit prod because :func:`_regenold_rate_key` only
-      emits the two prefixes above).
+    - ``regenold-key:<hash>`` → ``60/minute`` (partner key)
+    - anything else → ``30/minute`` (defensive fallback only; unreachable
+      for an authenticated request).
     """
     if key.startswith(_RATE_KEY_PREFIX_AUTHED):
         return "60/minute"
@@ -11375,7 +11357,7 @@ def regenold_eu_ai_act_ask(
     body: Any = Body(...),  # noqa: B008 — FastAPI-idiomatic Body(...) at default position
     include_telemetry: bool = False,
     include_reasoning: bool = False,
-    api_key: str | None = Depends(optional_regenold_api_key),
+    api_key: str = Depends(require_regenold_api_key),
 ) -> RegenoldAskResponse:
     """Regenold partner endpoint: grounded EU AI Act Q&A with citations.
 

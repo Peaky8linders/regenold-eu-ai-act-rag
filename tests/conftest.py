@@ -413,6 +413,38 @@ def _restore_regenold_api_key_setting():
 
 
 @pytest.fixture(autouse=True)
+def _partner_key_dependency_override():
+    """Satisfy the partner-key dependency for tests that are not about auth.
+
+    The Q&A route and the diagnostics routes depend on
+    ``require_regenold_api_key``. FastAPI consults ``dependency_overrides`` of
+    the app that OWNS the route, and ``/api/v1`` is a mounted sub-application
+    (``app.main.api_v1``), so the override goes on both it and the root app
+    (``/healthz/*`` and ``/info`` live on the root). Modules that test the
+    key check itself lift it by redefining a same-named autouse fixture that
+    just yields (pytest picks the closest definition).
+    """
+    try:
+        from app.integrations.regenold.auth import require_regenold_api_key  # noqa: PLC0415
+        from app.main import api_v1, app as _root_app  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 — never block a test on import trouble
+        yield
+        return
+
+    async def _test_key() -> str:
+        return "test-partner-key"
+
+    targets = (_root_app, api_v1)
+    for t in targets:
+        t.dependency_overrides[require_regenold_api_key] = _test_key
+    try:
+        yield
+    finally:
+        for t in targets:
+            t.dependency_overrides.pop(require_regenold_api_key, None)
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     """Clear the slowapi route limiter before each test (R100)."""
     if _route_limiter is not None:
