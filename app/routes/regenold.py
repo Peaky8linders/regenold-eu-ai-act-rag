@@ -1,23 +1,13 @@
 """Regenold partner integration — grounded EU AI Act Q&A.
 
-Public surface for the Regenold regulatory-AI agent's grounded Q&A
-contest entry. Authentication is OPTIONAL — the route is reachable
-without a partner key (this is a competition deliverable; gating on a
-private key would defeat the entry's discoverability).
+Partner-only surface for the Regenold regulatory-AI agent's grounded Q&A.
+Every request requires the configured partner ``X-Regenold-Api-Key``.
+Missing credentials return 401, invalid or self-service signup keys return
+403, and an unconfigured deployment returns 503 before Q&A work starts.
+This prevents anonymous traffic from triggering metered model fallbacks.
 
-Tier resolution at request time:
-
-* **Privileged tier** — caller sends a valid ``X-Regenold-Api-Key``
-  header. Rate limit 60/min keyed on the sha256 truncation of the key;
-  evidence chain stamps ``tenant_id="partner:regenold"`` so an auditor
-  can filter partner traffic without seeing the raw key.
-* **Anonymous tier** — no header (or no configured key on this deploy).
-  Rate limit 30/min keyed on the IP-hash; tenant stamps
-  ``"public:regenold-anon"`` plus a 16-hex IP hash on the chain payload
-  for forensic traceability under GDPR Art. 4(5) pseudonymisation.
-
-Header present but invalid (typo / stale / wrong tenant) still 403s —
-silent downgrade to anonymous would mask partner-side bugs.
+Valid partner requests retain the 60/minute key-scoped rate limit and
+``tenant_id="partner:regenold"`` evidence chain.
 
 Backed by the existing Graph RAG engine — this route is a thin
 adapter that reshapes the response into Regenold's expected wire shape
@@ -98,7 +88,7 @@ from app.evidence.store import get_evidence_store
 from app.integrations.regenold.answer_normaliser import answer_has_enumeration
 from app.integrations.regenold.auth import (
     is_known_regenold_key,
-    optional_regenold_api_key,
+    require_regenold_api_key,
 )
 from app.integrations.regenold.lexy_gate import (
     classify_safety_intent,
@@ -11375,7 +11365,7 @@ def regenold_eu_ai_act_ask(
     body: Any = Body(...),  # noqa: B008 — FastAPI-idiomatic Body(...) at default position
     include_telemetry: bool = False,
     include_reasoning: bool = False,
-    api_key: str | None = Depends(optional_regenold_api_key),
+    api_key: str = Depends(require_regenold_api_key),
 ) -> RegenoldAskResponse:
     """Regenold partner endpoint: grounded EU AI Act Q&A with citations.
 

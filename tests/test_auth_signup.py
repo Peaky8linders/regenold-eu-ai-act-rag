@@ -1,11 +1,10 @@
-"""Lexy sign-up funnel — user store + auth routes + issued-key Q&A access.
+"""Lexy sign-up funnel — user store + auth routes + Q&A containment.
 
 Covers the R-signup deliverable:
 * :mod:`app.integrations.regenold.user_store` (in-memory backend, key
   format, email normalisation, idempotency, fast-path validation);
 * the ``/api/v1/regenold/auth/{signup,signin,me}`` routes;
-* the load-bearing invariant — a funnel-issued ``lexy_sk_...`` key
-  authenticates the Q&A route (no 403, returns an answer).
+* self-service ``lexy_sk_...`` keys cannot access partner-only paid Q&A.
 """
 from __future__ import annotations
 
@@ -189,10 +188,8 @@ def test_me_unknown_key_403(client: TestClient) -> None:
 # ── the load-bearing invariant: issued key works for the Q&A route ────────────
 
 
-def test_issued_key_authenticates_ask_route(client: TestClient) -> None:
-    """A funnel-issued key must NOT be 403'd by the Q&A endpoint, and the
-    answer must come back with references — this is the whole point of the
-    sign-up funnel."""
+def test_issued_key_cannot_open_unconfigured_ask_route(client: TestClient) -> None:
+    """Self-service signup cannot provision access to metered Q&A."""
     settings.regenold.api_key = None  # no partner key on this deploy
     key = client.post(
         "/api/v1/regenold/auth/signup", json={"email": "qa@x.com"}
@@ -206,15 +203,11 @@ def test_issued_key_authenticates_ask_route(client: TestClient) -> None:
             ]
         },
     )
-    assert r.status_code == 200
-    data = r.json()
-    assert data.get("answer")
-    assert "references" in data
+    assert r.status_code == 503
 
 
-def test_issued_key_works_even_when_partner_key_configured(client: TestClient) -> None:
-    """A user key is accepted alongside a configured partner key (it is not a
-    typo of the partner key, so the 403 'fail-loudly' path must not fire)."""
+def test_issued_key_cannot_access_partner_only_ask_route(client: TestClient) -> None:
+    """A freely issued user key must not grant the partner's inference budget."""
     settings.regenold.api_key = SecretStr("the-partner-key")
     key = client.post(
         "/api/v1/regenold/auth/signup", json={"email": "qa2@x.com"}
@@ -224,7 +217,7 @@ def test_issued_key_works_even_when_partner_key_configured(client: TestClient) -
         headers={"X-Regenold-Api-Key": key},
         json={"messages": [{"role": "user", "content": "What is Article 5?"}]},
     )
-    assert r.status_code == 200
+    assert r.status_code == 403
 
 
 def test_bogus_key_still_403s_when_partner_key_configured(client: TestClient) -> None:
